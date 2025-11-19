@@ -132,7 +132,7 @@ DRESULT SD_read(BYTE lun, BYTE *buff, DWORD sector, UINT count)
   uint32_t startTick;
 
   // 設定讀取超時為 1000ms，給予 SD 卡足夠的反應時間
-  const uint32_t READ_TIMEOUT_MS = 1000;
+  const uint32_t READ_TIMEOUT_MS = 10000;
 
   if(BSP_SD_ReadBlocks((uint32_t*)buff,
                        (uint32_t) (sector),

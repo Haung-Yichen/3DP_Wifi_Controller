@@ -147,7 +147,7 @@ static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx) {
 
 	/*========== 超時錯誤檢測 ==========*/
 	} else {
-		f_sync(&ctx->file);
+		// f_sync(&ctx->file);
 		timeoutCnt++;
 		if (timeoutCnt >= 5) {
 			printf("%-20s timeout waiting for uart\r\n", "[fileTask.c]");

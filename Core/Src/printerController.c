@@ -48,7 +48,7 @@ void PC_Print_Task(void *argument) {
 
 	bool file_opened = false;
 	char printer_response[64] = {0};
-	char gcode_line[256] = {0};
+	__attribute__((aligned(4))) char gcode_line[128];
 	uint32_t line = 0;
 
 	//================ 錯誤處理 ================//
@@ -75,6 +75,7 @@ void PC_Print_Task(void *argument) {
 	f_lseek(&file, 0);
 	pause = false;
 	while (1) {
+		memset(gcode_line, 0, sizeof(gcode_line));
 		if (f_gets(gcode_line, sizeof(gcode_line), &file) == NULL) {
 			if (f_eof(&file)) {
 				printf("\r\n%-20s printTask completed! line: %d file: %s\r\n", "[printerController.c]", line,
@@ -102,18 +103,17 @@ void PC_Print_Task(void *argument) {
 		// if (strlen(gcode_line) == 0 || strchr(gcode_line, ';') != NULL) {
 		//     continue;
 		// }
-		// 發送 G-code 到印表機
-		HAL_UART_Transmit(&PRINTING_USART_PORT, gcode_line, sizeof(gcode_line), 1000);
 
-		// HAL_StatusTypeDef uart_status = HAL_UART_Transmit(&huart3,
-		//                                                  (uint8_t*)gcode_line,
-		//                                                  strlen(gcode_line),
-		//                                                  1000);
-		//
-		// if (uart_status != HAL_OK) {
-		//     printf("UART transmission failed: %d\r\n", uart_status);
-		//     break;
-		// }
+		// 發送 G-code 到印表機
+		HAL_StatusTypeDef uart_status = HAL_UART_Transmit(&huart3,
+		                                                 (uint8_t*)gcode_line,
+		                                                 strlen(gcode_line),
+		                                                 1000);
+
+		if (uart_status != HAL_OK) {
+		    printf("UART transmission failed: %d\r\n", uart_status);
+		    break;
+		}
 
 		// 等待印表機回復 "ok"
 		// memset(printer_response, 0, sizeof(printer_response));
@@ -141,8 +141,8 @@ void PC_Print_Task(void *argument) {
 		//     break;
 		// }
 		// 清空 gcode_line 準備下一行
-		memset(gcode_line, 0, sizeof(gcode_line));
-		vTaskDelay(10);
+
+		vTaskDelay(50);
 	}
 CleanRes:
 	if (file_opened) {
