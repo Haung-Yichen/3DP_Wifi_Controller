@@ -9,7 +9,7 @@ osThreadId_t pcTaskHandle = NULL;
 const osThreadAttr_t pcTask_attributes = {
 	.name = "PC_Print_Task",
 	.stack_size = configMINIMAL_STACK_SIZE * 30,
-	.priority = (osPriority) osPriorityLow,
+	.priority = (osPriority) osPriorityAboveNormal,
 };
 
 volatile bool pause = false;
@@ -103,7 +103,7 @@ void PC_Print_Task(void *argument) {
 		//     continue;
 		// }
 		// 發送 G-code 到印表機
-		HAL_UART_Transmit(&DEBUG_USART_PORT, gcode_line, sizeof(gcode_line), 1000);
+		HAL_UART_Transmit(&PRINTING_USART_PORT, gcode_line, sizeof(gcode_line), 1000);
 
 		// HAL_StatusTypeDef uart_status = HAL_UART_Transmit(&huart3,
 		//                                                  (uint8_t*)gcode_line,
@@ -142,7 +142,7 @@ void PC_Print_Task(void *argument) {
 		// }
 		// 清空 gcode_line 準備下一行
 		memset(gcode_line, 0, sizeof(gcode_line));
-		// vTaskDelay(1);
+		vTaskDelay(10);
 	}
 CleanRes:
 	if (file_opened) {
@@ -181,12 +181,12 @@ void StopPrintingHandler(const char *args, ResStruct_t *_resStruct) {
 		printf("%-20s Sending stop request to print task...\r\n", "[printerController.c]");
 		stopRequested = true;
 	}
-	UART_SendString_DMA(&DEBUG_USART_PORT, "G28\r\nM104 S0\r\nM140 S0\r\n");
+	UART_SendString_DMA(&PRINTING_USART_PORT, "G28\r\nM104 S0\r\nM140 S0\r\n");
 }
 
 void GoHomeHandler(const char *args, ResStruct_t *_resStruct) {
 	/*       回原點       */
-	UART_SendString_DMA(&DEBUG_USART_PORT, "G28\r\n");
+	UART_SendString_DMA(&PRINTING_USART_PORT, "G28\r\n");
 }
 
 void GetRemainingTimeHandler(const char *args, ResStruct_t *_resStruct) {
@@ -198,10 +198,10 @@ void GetProgressHandler(const char *args, ResStruct_t *_resStruct) {
 }
 
 void GetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
-	UART_SendString_DMA(&DEBUG_USART_PORT, "M105\r\n");
+	UART_SendString_DMA(&PRINTING_USART_PORT, "M105\r\n");
 	//藥用uart idle dma寫
 
-	// HAL_UART_Receive(&DEBUG_USART_PORT, pc_RxBuf, sizeof(pc_RxBuf), pdMS_TO_TICKS(50));
+	// HAL_UART_Receive(&PRINTING_USART_PORT, pc_RxBuf, sizeof(pc_RxBuf), pdMS_TO_TICKS(50));
 	sprintf(_resStruct->resBuf, "NozzleTemp:%d\n", pcParameter.nozzleTemp);
 }
 
@@ -219,10 +219,6 @@ void SetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
 	extract_parameter(args, tmp, 20);
 	pcParameter.nozzleTemp = atoi(tmp);
 	printf("%-20s set nozzle temp to %d deg.\r\n", "[pc.c]", pcParameter.nozzleTemp);
-
-	sprintf(pc_TxBuf, "NozzleTemp:%d\n", pcParameter.nozzleTemp);
-	sendString_to_Esp32(pc_TxBuf);
-	memset(pc_TxBuf, 0, sizeof(pc_TxBuf));
 }
 
 // unused
@@ -232,10 +228,6 @@ void SetBedTempHandler(const char *args, ResStruct_t *_resStruct) {
 	// extract_parameter(args, tmp, 20);
 	// pcParameter.bedTemp = atoi(tmp);
 	// printf("%-20s set bed temp to %d deg.\r\n", "[pc.c]", pcParameter.bedTemp);
-	//
-	// sprintf(pc_TxBuf, "BedTemp:%d\n", pcParameter.bedTemp);
-	// sendString_to_Esp32(pc_TxBuf);
-	// memset(pc_TxBuf, 0, sizeof(pc_TxBuf));
 }
 
 void EmergencyStopHandler(const char *args, ResStruct_t *_resStruct) {

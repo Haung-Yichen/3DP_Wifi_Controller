@@ -129,15 +129,22 @@ DSTATUS SD_status(BYTE lun)
 DRESULT SD_read(BYTE lun, BYTE *buff, DWORD sector, UINT count)
 {
   DRESULT res = RES_ERROR;
-  uint32_t timeout = 100000;
+  uint32_t startTick;
 
-  if(BSP_SD_ReadBlocks((uint32_t*)buff, 
-                       (uint32_t) (sector), 
+  // 設定讀取超時為 1000ms，給予 SD 卡足夠的反應時間
+  const uint32_t READ_TIMEOUT_MS = 1000;
+
+  if(BSP_SD_ReadBlocks((uint32_t*)buff,
+                       (uint32_t) (sector),
                        count, SD_DATATIMEOUT) == MSD_OK)
   {
-    while(BSP_SD_GetCardState()!= MSD_OK)
+    startTick = HAL_GetTick();
+
+    // 等待 SD 卡狀態回到 Ready
+    while(BSP_SD_GetCardState() != MSD_OK)
     {
-      if (timeout-- == 0)
+      // 使用系統時鐘檢查是否超時，而非依賴 CPU 迴圈次數
+      if ((HAL_GetTick() - startTick) > READ_TIMEOUT_MS)
       {
         return RES_ERROR;
       }
