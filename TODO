@@ -1,0 +1,8 @@
+RST後螢幕不亮
+其他命令功能實現
+重構esp32 rxhandler 改成用對列存命令
+UI回調與esp32 rxhandler 對接
+檔案驗證錯誤
+esp32加上超時處理
+esp32RxTask MEM leak
+uart2 dma錯誤

@@ -1,0 +1,55 @@
+# =====================
+# OS / 系統檔
+# =====================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =====================
+# IDE / 編輯器
+# =====================
+.idea/
+.vscode/
+
+# =====================
+# CMake 相關
+# =====================
+CMakeFiles/
+CMakeCache.txt
+cmake-build-*/
+Testing/
+Makefile
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+*.cmake
+
+# =====================
+# STM32CubeMX
+# =====================
+# 如果你希望版本控制硬體設定，保留 .ioc
+# 建議忽略 .mxproject（CubeMX 用的 IDE 設定）
+*.mxproject
+
+# =====================
+# 編譯中間檔
+# =====================
+*.o
+*.obj
+*.d
+
+# =====================
+# 輸出檔案 (Firmware)
+# =====================
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+
+# =====================
+# 其他暫存檔
+# =====================
+*.log
+*.tmp
+*.bak
