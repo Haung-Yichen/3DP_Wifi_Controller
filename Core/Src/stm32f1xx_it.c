@@ -174,6 +174,20 @@ void SysTick_Handler(void) {
 /******************************************************************************/
 
 /**
+  * @brief This function handles DMA1 channel2 global interrupt.
+  */
+void DMA1_Channel2_IRQHandler(void) {
+	HAL_DMA_IRQHandler(&hdma_usart3_tx);
+}
+
+/**
+  * @brief This function handles DMA1 channel3 global interrupt.
+  */
+void DMA1_Channel3_IRQHandler(void) {
+	HAL_DMA_IRQHandler(&hdma_usart3_rx);
+}
+
+/**
   * @brief This function handles DMA1 channel4 global interrupt.
   */
 void DMA1_Channel4_IRQHandler(void) {
@@ -231,6 +245,13 @@ void USART2_IRQHandler(void) {
 		HAL_UART_Receive_DMA(&ESP32_USART_PORT, uartRxBuf.data, sizeof(uartRxBuf.data));
 	}
 	HAL_UART_IRQHandler(&ESP32_USART_PORT); // 讓 HAL 處理其他 UART 相關的中斷
+}
+
+/**
+  * @brief This function handles USART3 global interrupt.
+  */
+void USART3_IRQHandler(void) {
+	HAL_UART_IRQHandler(&huart3);
 }
 
 /* USER CODE BEGIN 1 */
