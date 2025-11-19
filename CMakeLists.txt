@@ -178,6 +178,8 @@ add_executable(${CMAKE_PROJECT_NAME}
         Core/Src/fileTask.c
         Core/sha256/sha256.h
         Core/sha256/sha256.c
+        Core/hx711/hx711.h
+        Core/hx711/hx711.c
 )
 
 # Add STM32CubeMX generated sources

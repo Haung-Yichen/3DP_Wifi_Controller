@@ -29,6 +29,7 @@
 #include "esp32.h"
 #include "gpio.h"
 #include "UITask.h"
+#include "hx711.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,6 +49,9 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+
+void init_weight(hx711_t *hx711);
+float measure_weight(hx711_t *hx711);
 
 //UI主線程
 osThreadId_t UITaskHandle;
@@ -155,8 +159,14 @@ void MX_FREERTOS_Init(void) {
   */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument) {
+	hx711_t hx711;
+	float weight;
+
+	init_weight(&hx711);
+
 	for (;;) {
-		osDelay(1000);
+		weight = measure_weight(&hx711);
+		printf("%-20s Weight: %d\r\n", "[hx711]", (size_t)(weight/1000));
 
 		size_t free_heap = xPortGetFreeHeapSize();
 		size_t used_heap = configTOTAL_HEAP_SIZE - free_heap;
@@ -164,6 +174,7 @@ void StartDefaultTask(void *argument) {
 
 		printf("%-20s Heap usage: %u%% (%u / %u bytes)\r\n", "[freertos.c]", usage_percent, (unsigned int) used_heap,
 		       (unsigned int) configTOTAL_HEAP_SIZE);
+		osDelay(500);
 	}
 }
 
@@ -185,3 +196,50 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
 }
 
 /* USER CODE END Application */
+
+/**
+ * @brief  Weight Initialization Function
+ * @retval None
+ */
+void init_weight(hx711_t *hx711){
+	printf("%-20s HX711 initialization\r\n", "[hx711]");
+
+	/* Initialize the hx711 sensors */
+	hx711_init(hx711, GPIOB, GPIO_PIN_14, GPIOB, GPIO_PIN_15);
+
+	/* Configure gain for each channel (see datasheet for details) */
+	set_gain(hx711, 128, 32);
+
+	/* Set HX711 scaling factor (see README for procedure) */
+	set_scale(hx711, -44.25, -10.98);
+
+	/* Tare weight */
+	tare_all(hx711, 10);
+
+	printf("%-20s HX711 module has been initialized\r\n", "[hx711]");
+}
+
+/**
+ * @brief  讀取重量 (改良版)
+ * @param  hx711: HX711 結構體指標
+ * @return float: Channel A 的重量 (假設主要測量 A 通道)
+ */
+float measure_weight(hx711_t *hx711) { // 改為傳遞指標
+	double weightA = 0;
+	double weightB = 0;
+
+	// 讀取 Channel A (使用驅動提供的 get_value 或 get_units)
+	// 注意: 原驅動 get_weight 回傳的是扣除皮重後的值
+	weightA = get_value(hx711, 1, CHANNEL_A);
+
+	// 如果需要防止負數
+	// weightA = (weightA < 0) ? 0 : weightA;
+
+	/* 如果您沒有接 Channel B 的傳感器，建議註解掉下面這段以節省時間 */
+	// weightB = get_value(hx711, 1, CHANNEL_B);
+
+	// 這邊演示如何將 float 轉為較易閱讀的格式 (若需要 Debug)
+	// printf("[HX711] Raw A: %.2f\r\n", weightA);
+
+	return (float)weightA;
+}

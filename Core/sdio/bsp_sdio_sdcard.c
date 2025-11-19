@@ -40,7 +40,7 @@ uint8_t BSP_SD_Init(void)
   uSdHandle.Init.ClockPowerSave      = SDIO_CLOCK_POWER_SAVE_DISABLE;
   uSdHandle.Init.BusWide             = SDIO_BUS_WIDE_1B;
   uSdHandle.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
-  uSdHandle.Init.ClockDiv            = 0x08;
+  uSdHandle.Init.ClockDiv            = 0x11;
   
 //  /* Check if the SD card is plugged in the slot */
 //  if(BSP_SD_IsDetected() != SD_PRESENT)
@@ -287,7 +287,7 @@ __weak void BSP_SD_MspInit(void *Params)
   __HAL_RCC_SDIO_CLK_ENABLE();
   
   /* Enable DMA2 clocks */
-  // __DMAx_TxRx_CLK_ENABLE();
+  __DMAx_TxRx_CLK_ENABLE();
 
   /* Enable GPIOs clock */
   __HAL_RCC_GPIOC_CLK_ENABLE();

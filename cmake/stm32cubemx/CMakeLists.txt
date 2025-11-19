@@ -15,6 +15,7 @@ set(MX_Include_Dirs
 		${CMAKE_SOURCE_DIR}/Core/FatFs/drivers
 		${CMAKE_SOURCE_DIR}/Core/sdio
 		${CMAKE_SOURCE_DIR}/Core/lcd
+		${CMAKE_SOURCE_DIR}/Core/hx711
 		${CMAKE_SOURCE_DIR}/Core/sha256
 		${CMAKE_SOURCE_DIR}/Core/STemWin
 		${CMAKE_SOURCE_DIR}/Core/STemWin/Config
