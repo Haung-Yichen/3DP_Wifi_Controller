@@ -177,7 +177,7 @@ void StartDefaultTask(void *argument) {
 
 		printf("%-20s Heap usage: %u%% (%u / %u bytes)\r\n", "[freertos.c]", usage_percent, (unsigned int) used_heap,
 		       (unsigned int) configTOTAL_HEAP_SIZE);
-		osDelay(2000);
+		osDelay(1000);
 	}
 }
 

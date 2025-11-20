@@ -97,6 +97,7 @@ void StartTransmissionHandler(const char *args, ResStruct_t *_resStruct) {
 }
 
 char hashVal[SHA256_HASH_SIZE]; // 傳址給檔案接收任務
+GcodeTaskArgs_t gcodeTaskArgs;
 
 void SetFileNameHandler(const char *args, ResStruct_t *_resStruct) {
 	curFileName[FILENAME_SIZE - 1] = '\0';
@@ -112,10 +113,27 @@ void SetFileNameHandler(const char *args, ResStruct_t *_resStruct) {
 	       "ready to creat Gcode task",
 	       xPortGetFreeHeapSize());
 
-	gcodeRxTaskHandle = osThreadNew(Gcode_RxHandler_Task, hashVal, &gcodeTask_attributes);
+	gcodeTaskArgs.ownerTaskHandle = xTaskGetCurrentTaskHandle();
+	gcodeTaskArgs.hashResult = hashVal;
+
+	gcodeRxTaskHandle = osThreadNew(Gcode_RxHandler_Task, &gcodeTaskArgs, &gcodeTask_attributes);
 	if (gcodeRxTaskHandle == NULL) {
 		ESP32_SetState(ESP32_IDLE);
 		printf("%-20s Error creating gcode task\r\n", "[esp32.c]");
+		return;
+	}
+
+	// 等待 Gcode_RxHandler_Task 初始化完成，最長等待 5 秒
+	if (ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(5000)) == 0) {
+		// 如果超時，說明 Gcode_RxHandler_Task 初始化失敗 (例如 f_open 失敗)
+		printf("%-20s Gcode_RxHandler_Task init failed or timeout\r\n", "[esp32.c]");
+		if (gcodeRxTaskHandle != NULL) {
+			vTaskDelete(gcodeRxTaskHandle);
+			gcodeRxTaskHandle = NULL;
+		}
+		ESP32_SetState(ESP32_IDLE);
+		UART_SendString_DMA(&ESP32_USART_PORT, "Error: File open failed\n");
+		return;
 	}
 }
 
@@ -151,15 +169,15 @@ void TransmissionOverHandler(const char *args, ResStruct_t *_resStruct) {
 	if (strcmp(srcHash, hashVal) == 0) {
 		printf("%-20s File %s verification succeeded\r\n", "[esp32.c]", curFileName);
 	} else {
-		// 驗證不過再驗證一次 再不對叫網頁重發一次
-		memset(hashVal, 0, SHA256_HASH_SIZE);
-		calFileHash(hashVal);
-		if (strcmp(srcHash, hashVal) == 0) {
-			printf("%-20s File %s reverification succeeded\r\n", "[esp32.c]", curFileName);
-		} else {
-			printf("%-20s File %s verification failed\r\n", "[esp32.c]", curFileName);
-			// sendString_to_Esp32(ERROR_FILE_BROKEN);
-		}
+		// // 驗證不過再驗證一次 再不對叫網頁重發一次
+		// memset(hashVal, 0, SHA256_HASH_SIZE);
+		// // calFileHash(hashVal);
+		// if (strcmp(srcHash, hashVal) == 0) {
+		// 	printf("%-20s File %s reverification succeeded\r\n", "[esp32.c]", curFileName);
+		// } else {
+		// 	printf("%-20s File %s verification failed\r\n", "[esp32.c]", curFileName);
+		// 	// sendString_to_Esp32(ERROR_FILE_BROKEN);
+		// }
 	}
 	printf("%-20s \r\n======================TransMission Successed=====================\r\n", "[esp32.c]");
 	ESP32_SetState(ESP32_IDLE);

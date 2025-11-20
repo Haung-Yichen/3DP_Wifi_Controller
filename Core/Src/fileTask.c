@@ -19,7 +19,7 @@ uint8_t fileQueueArea[FILE_QUEUE_LEN * sizeof(uartRxBuf_TypeDef *)];
 
 const osThreadAttr_t gcodeTask_attributes = {
 	.name = "Gcode_Rx_Task",
-	.stack_size = configMINIMAL_STACK_SIZE * 28,
+	.stack_size = configMINIMAL_STACK_SIZE * 30,
 	.priority = (osPriority) osPriorityHigh7,
 };
 
@@ -39,9 +39,9 @@ typedef struct {
 typedef enum {RECV_OK, RECV_FAIL} RECV_STATUS_TypeDef;
 
 static void dumpArr(int *arr, int numOfArr);
-static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx);
+static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx, GcodeTaskArgs_t* taskArgs);
 static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx);
-static RECV_STATUS_TypeDef transmittingOverStage(transmittingCtx_TypeDef* ctx, void* _argument);
+static RECV_STATUS_TypeDef transmittingOverStage(transmittingCtx_TypeDef* ctx, GcodeTaskArgs_t* taskArgs);
 
 void FileTask_Init(void) {
 	xFileQueue = xQueueCreateStatic(FILE_QUEUE_LEN,
@@ -62,23 +62,24 @@ void Gcode_RxHandler_Task(void *argument) {
 	transmittingCtx.timer = 0;
 	transmittingCtx.stackHighWaterMark = 0;
 
-	RECV_STATUS_TypeDef recvStatus = RECV_OK;
+	GcodeTaskArgs_t* taskArgs = (GcodeTaskArgs_t*)argument;
 
-	if (argument == NULL) {
-		printf("%-20s argument is NULL\r\n", "[fileTask.c]");
+	if (taskArgs == NULL || taskArgs->ownerTaskHandle == NULL) {
+		printf("%-20s argument is NULL or ownerTaskHandle is NULL\r\n", "[fileTask.c]");
 		goto Delete;
 	}
-	if (RECV_OK != transmittingInitStage(&transmittingCtx)) { goto Delete; }
+
+	if (RECV_OK != transmittingInitStage(&transmittingCtx, taskArgs)) { goto Delete; }
 
 	while (1) {
 		/*    判斷是否該結束接收   */
 		if (RECV_OK != transmittingStage(&transmittingCtx) || delete == true) {
-			Delete: transmittingOverStage(&transmittingCtx, argument);
+			Delete: transmittingOverStage(&transmittingCtx, taskArgs);
 		}
 	}
 }
 
-static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx) {
+static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx, GcodeTaskArgs_t* taskArgs) {
 	isTransmittimg = true;
 #if USE_SHA256
 	sha256_init(&ctx->sha256_ctx);
@@ -95,16 +96,21 @@ static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx) {
 	if (ctx->f_res != FR_OK) {
 		printf("%-20s %-20s \r\n", "[fileTask.c]", "Failed to open file:");
 		printf_fatfs_error(ctx->f_res);
+		// 通知 esp32.c 任務創建失敗
+		xTaskNotifyGive(taskArgs->ownerTaskHandle);
 		return RECV_FAIL;
 	}
 	// 清空檔案
 	if (f_truncate(&ctx->file) != FR_OK) {
 		printf("%-20s %-30s %d \r\n", "[fileTask.c]", "Failed to truncate file:", ctx->f_res);
 		f_close(&ctx->file); // 關閉檔案
+		xTaskNotifyGive(taskArgs->ownerTaskHandle); // 也通知失敗
 		return RECV_FAIL;
 	}
 	vTaskDelay(ESP32_RECV_DELAY);
 	UART_SendString_DMA(&ESP32_USART_PORT, "Name ok\n");
+	// 通知 esp32.c 任務創建成功
+	xTaskNotifyGive(taskArgs->ownerTaskHandle);
 	printf("%-20s %-30s free heap: %d bytes \r\n",
 		   "[fileTask.c]",
 		   "Gcode_RxHandler_Task created!",
@@ -174,20 +180,19 @@ static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx) {
 	return RECV_OK;
 }
 
-static RECV_STATUS_TypeDef transmittingOverStage(transmittingCtx_TypeDef* ctx, void* _argument) {
+static RECV_STATUS_TypeDef transmittingOverStage(transmittingCtx_TypeDef* ctx, GcodeTaskArgs_t* taskArgs) {
 	uint32_t tmp = xTaskGetTickCount() - ctx->timer;
 
-	char* srcHash = (char*)_argument;
 #if USE_SHA256
 	// 完成 SHA256 計算
 	uint8_t hash_output[SHA256_BLOCK_SIZE];
 	sha256_final(&ctx->sha256_ctx, hash_output);
 	// 轉換為十六進位字串
 	for (int j = 0; j < SHA256_BLOCK_SIZE; j++) {
-		sprintf(_argument + (j * 2), "%02x", hash_output[j]);
+		sprintf(taskArgs->hashResult + (j * 2), "%02x", hash_output[j]);
 	}
 #else
-	sprintf(_argument, "%d", ctx->fnumCount);
+	sprintf(taskArgs->hashResult, "%d", ctx->fnumCount);
 #endif
 
 	f_close(&ctx->file);

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include "cmsis_os2.h"
 #include "FreeRTOS.h"
+#include "task.h"
 #include "semphr.h"
 #include "ff.h"
 #include "sha256.h"
@@ -11,6 +12,11 @@
 
 #define FILENAME_SIZE			 _MAX_LFN
 #define SHA256_HASH_SIZE         70
+
+typedef struct {
+	TaskHandle_t ownerTaskHandle;
+	char* hashResult;
+} GcodeTaskArgs_t;
 
 
 extern osThreadId_t gcodeRxTaskHandle;
