@@ -159,14 +159,14 @@ void MX_FREERTOS_Init(void) {
   */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument) {
-	hx711_t hx711;
-	float weight;
-
-	init_weight(&hx711);
+	// hx711_t hx711;
+	// float weight;
+	//
+	// init_weight(&hx711);
 
 	for (;;) {
-		weight = measure_weight(&hx711);
-		printf("%-20s Weight: %d\r\n", "[hx711]", (size_t)(weight/1000));
+		// weight = measure_weight(&hx711);
+		// printf("%-20s Weight: %d\r\n", "[hx711]", (size_t)(weight/1000));
 
 		size_t free_heap = xPortGetFreeHeapSize();
 		size_t used_heap = configTOTAL_HEAP_SIZE - free_heap;
@@ -174,7 +174,7 @@ void StartDefaultTask(void *argument) {
 
 		printf("%-20s Heap usage: %u%% (%u / %u bytes)\r\n", "[freertos.c]", usage_percent, (unsigned int) used_heap,
 		       (unsigned int) configTOTAL_HEAP_SIZE);
-		osDelay(500);
+		osDelay(1000);
 	}
 }
 

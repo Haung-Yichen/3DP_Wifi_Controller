@@ -49,12 +49,11 @@
 #include "LCD.h"
 
 void setUART2HighZ();
-
 void SystemClock_Config(void);
-
 void MX_FREERTOS_Init(void);
-
 uint8_t ILI9341_Read_MADCTL(void);
+void show_boot_animation(void);
+void Sanitize_SD_Bus(void);
 
 /**
   * @brief  主程式進入點
@@ -71,22 +70,93 @@ int main(void) {
 	MX_USART2_UART_Init();
 	MX_USART3_UART_Init();
 	__HAL_RCC_CRC_CLK_ENABLE();
-
 	/*------------CUSTOMIZE FUNC INIT------------*/
 	LED_GPIO_Config();
 	XPT2046_Init();
 	ESP32_Init();
 	PC_init();
+	Sanitize_SD_Bus();
 	SDIO_FatFs_init();
-	// SDIO_FatFs_RW_Test();
 	GUI_Init();
-
+	show_boot_animation();
+	/*-----------------RTOS INIT-----------------*/
 	osKernelInitialize();
 	MX_FREERTOS_Init();
 	Uart_Sync_Init();
 	osKernelStart();
 	while (1) {
 	}
+}
+
+void show_boot_animation(void) {
+	const int screen_x = LCD_GetXSize();
+	const int screen_y = LCD_GetYSize();
+	const int bar_width = 200;
+	const int bar_height = 15;
+	const int bar_x = (screen_x - bar_width) / 2;
+	const int bar_y = (screen_y / 2) + 20;
+
+	GUI_SetBkColor(GUI_BLUE);
+	GUI_Clear();
+	GUI_SetColor(GUI_WHITE);
+	GUI_SetFont(&GUI_Font24_ASCII);
+	GUI_DispStringHCenterAt("Booting...", screen_x / 2, (screen_y / 2) - 30);
+	GUI_SetColor(GUI_WHITE);
+	GUI_DrawRect(bar_x, bar_y, bar_x + bar_width, bar_y + bar_height);
+	GUI_SetColor(GUI_WHITE);
+	for (int i = 1; i <= bar_width - 4; i++) {
+		int cnt = 50000;
+		GUI_FillRect(bar_x + 2, bar_y + 2, bar_x + 2 + i, bar_y + bar_height - 2);
+		while (cnt-- >= 0){}
+	}
+	GUI_Clear();
+}
+
+/* -------------------------------------------------------------------------- */
+/* 函式名稱：Sanitize_SD_Bus                                                 */
+/* 功能：手動重置 SD 卡匯流排，解除 Busy 鎖死與同步狀態機                      */
+/* -------------------------------------------------------------------------- */
+void Sanitize_SD_Bus(void)
+{
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+	// 1. 確保 SDMMC 周邊時脈已關閉，避免硬體衝突
+	// 注意：請根據您的具體型號修改 (如 __HAL_RCC_SDIO_CLK_DISABLE)
+	__HAL_RCC_SDIO_CLK_DISABLE();
+
+	// 2. 啟用 GPIO 時脈 (請依據實際板子線路修改 Port)
+	__HAL_RCC_GPIOC_CLK_ENABLE(); // 假設 D0-D3 與 CK 在 Port C
+	__HAL_RCC_GPIOD_CLK_ENABLE(); // 假設 CMD 在 Port D
+
+	// 3. 將 SDMMC 引腳配置為通用推挽輸出 (Output Push-Pull)
+	// CK (PC12), D0 (PC8) 為例
+	GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+	// CMD (PD2) 為例
+	GPIO_InitStruct.Pin = GPIO_PIN_2;
+	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+	// 4. 將 CMD 與 Data 線拉高 (Idle State)
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, GPIO_PIN_SET); // CMD High
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11, GPIO_PIN_SET); // Data High
+
+	// 5. 手動翻轉 CK 引腳，產生 80 個時脈週期 (Bit-Bang)
+	// 這是為了讓 SD 卡內部狀態機推進，並釋放 Busy (D0 Low) 狀態
+	for(int i = 0; i < 80; i++)
+	{
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_SET);   // CK High
+		HAL_Delay(1); // 延遲 1ms，確保頻率極低 (<400kHz)，安全第一
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET); // CK Low
+		HAL_Delay(1);
+	}
+
+	// 6. 釋放 GPIO，將引腳重置，讓後續的 HAL_SD_Init 接手配置為 Alternate Function
+	HAL_GPIO_DeInit(GPIOC, GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12);
+	HAL_GPIO_DeInit(GPIOD, GPIO_PIN_2);
 }
 
 void setUART2HighZ() {
