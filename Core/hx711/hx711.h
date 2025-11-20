@@ -32,6 +32,8 @@ typedef struct
 
 }hx711_t;
 
+extern hx711_t hx711;
+
 /* Setup functions */
 void hx711_init(hx711_t *hx711, GPIO_TypeDef *clk_gpio, uint16_t clk_pin, GPIO_TypeDef *dat_gpio, uint16_t dat_pin);
 void set_scale(hx711_t *hx711, float Ascale, float Bscale);
@@ -50,6 +52,7 @@ void wait_ready(hx711_t *hx711);
 long read(hx711_t *hx711, uint8_t channel);
 long read_average(hx711_t *hx711, int8_t times, uint8_t channel);
 double get_value(hx711_t *hx711, int8_t times, uint8_t channel);
+void HX711_Calibration(void);
 
 
 #endif /* APPLICATION_CORE_HX711_H_ */

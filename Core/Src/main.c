@@ -45,67 +45,6 @@ void MX_FREERTOS_Init(void);
 uint8_t ILI9341_Read_MADCTL(void);
 void Sanitize_SD_Bus(void);
 
-#define KNOWN_WEIGHT_VALUE 910.0f
-hx711_t hx711;
-
-void perform_calibration(hx711_t *my_hx711) {
-
-	hx711_init(my_hx711, GPIOB, GPIO_PIN_14, GPIOB, GPIO_PIN_15);
-	
-	// Check if HX711 is responsive - wait for LOW state with strict timeout
-	printf("檢查 HX711 狀態...\r\n");
-	uint32_t check_timeout = 0;
-	uint32_t max_check = 5000000; // ~5 seconds
-	
-	while (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == GPIO_PIN_SET) {
-		check_timeout++;
-		if (check_timeout > max_check) {
-			printf("[警告] HX711 無響應！DOUT 持續為 HIGH\r\n");
-			printf("DT電壓異常 (應為 0V 或 3.3V)，可能原因：\r\n");
-			printf("  1) VCC/GND 未正確供電\r\n");
-			printf("  2) 稱重傳感器未連接\r\n");
-			printf("  3) HX711 模組損壞\r\n");
-			printf("跳過校準程序，使用默認值繼續啟動...\r\n");
-			// 設置默認值以便系統繼續運行
-			set_scale(my_hx711, 1.0f, 1.0f);
-			set_offset(my_hx711, 0, CHANNEL_A);
-			return;
-		}
-		// Print progress every 500k iterations
-		if (check_timeout % 500000 == 0) {
-			printf(".");
-		}
-	}
-	
-	printf("\r\nHX711 已響應 (DOUT=LOW)，開始校準...\r\n");
-	
-	// 1. 初始化 Scale 為 1，避免除以零或錯誤計算
-	set_scale(my_hx711, 1.0f, 1.0f);
-
-	// 2. 歸零 (Tare) - 設定空秤時的 Offset
-	// 讀取 10 次取平均，確保穩定
-	printf("請清空秤盤，準備歸零...\r\n");
-	HAL_Delay(2000); // 等待穩定
-	tare(my_hx711, 10, CHANNEL_A);
-	printf("歸零完成。Offset: %ld\r\n", my_hx711->Aoffset);
-
-	// 3. 測量已知重量
-	printf("請放上 %.2f單位的砝碼...\r\n", KNOWN_WEIGHT_VALUE);
-	HAL_Delay(5000); // 給予足夠時間放上砝碼並等待數值穩定
-
-	// 4. 獲取扣除 Offset 後的原始數值 (get_value 會回傳 Raw - Offset)
-	double raw_diff = get_value(my_hx711, 10, CHANNEL_A);
-
-	// 5. 計算比例因子 (Scale Factor)
-	float new_scale = (float)(raw_diff / KNOWN_WEIGHT_VALUE);
-
-	// 6. 設定新的 Scale
-	set_scale(my_hx711, new_scale, 1.0f); // 假設只校正 Channel A
-
-	printf("校正完成！計算出的 Scale: %f\r\n", new_scale);
-	printf("現在可以使用 get_weight() 獲取準確重量。\r\n");
-}
-
 /**
   * @brief  主程式進入點
   * @retval int
@@ -126,7 +65,8 @@ int main(void) {
 	XPT2046_Init();
 	ESP32_Init();
 	PC_init();
-	// perform_calibration(&hx711);
+	hx711_init(&hx711, GPIOB, GPIO_PIN_14, GPIOB, GPIO_PIN_15);
+	// HX711_Calibration(); // 需在 RTOS 任務中呼叫
 	Sanitize_SD_Bus();
 	SDIO_FatFs_init();
 	GUI_Init();
@@ -139,8 +79,6 @@ int main(void) {
 	while (1) {
 	}
 }
-
-
 
 /* -------------------------------------------------------------------------- */
 /* 函式名稱：Sanitize_SD_Bus                                                 */

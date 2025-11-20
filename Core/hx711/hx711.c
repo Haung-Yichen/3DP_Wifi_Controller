@@ -7,15 +7,15 @@
 
 #include "HX711.h"
 #include <stdio.h>
+#include "cmsis_os.h"
+
+#define KNOWN_WEIGHT_VALUE 910.0f
+hx711_t hx711;
 
 //#############################################################################################
 void hx711_init(hx711_t *hx711, GPIO_TypeDef *clk_gpio, uint16_t clk_pin, GPIO_TypeDef *dat_gpio, uint16_t dat_pin) {
 
 	__HAL_RCC_GPIOB_CLK_ENABLE();
-
-	printf("HX711 Init: CLK=PB%d, DAT=PB%d\r\n", 
-	       (clk_pin == GPIO_PIN_14) ? 14 : -1, 
-	       (dat_pin == GPIO_PIN_15) ? 15 : -1);
 
 	// Setup the pin connections with the STM Board
 	hx711->clk_gpio = clk_gpio;
@@ -41,7 +41,6 @@ void hx711_init(hx711_t *hx711, GPIO_TypeDef *clk_gpio, uint16_t clk_pin, GPIO_T
 	
 	// Check initial DOUT state
 	GPIO_PinState dout_state = HAL_GPIO_ReadPin(dat_gpio, dat_pin);
-	printf("HX711 Init: DOUT initial state = %s\r\n", dout_state ? "HIGH" : "LOW");
 	
 	// If DOUT is HIGH, pulse CLK high for >60us to reset HX711
 	if (dout_state == GPIO_PIN_SET) {
@@ -53,7 +52,6 @@ void hx711_init(hx711_t *hx711, GPIO_TypeDef *clk_gpio, uint16_t clk_pin, GPIO_T
 		
 		// Check state again
 		dout_state = HAL_GPIO_ReadPin(dat_gpio, dat_pin);
-		printf("HX711: After reset, DOUT = %s\r\n", dout_state ? "HIGH" : "LOW");
 	}
 }
 
@@ -113,7 +111,7 @@ bool is_ready(hx711_t *hx711) {
 void wait_ready(hx711_t *hx711) {
 	// Wait for the chip to become ready with timeout (using counter, no tick dependency)
 	uint32_t timeout_counter = 0;
-	uint32_t max_timeout = 50000000; // Very long timeout
+	uint32_t max_timeout = 5000; // ~5 seconds (assuming 1ms delay)
 	
 	// Check initial state
 	if (is_ready(hx711)) {
@@ -127,10 +125,10 @@ void wait_ready(hx711_t *hx711) {
 			return; // Timeout, return to avoid infinite loop
 		}
 		// Reduce polling frequency
-		if (timeout_counter % 100000 == 0) {
+		if (timeout_counter % 500 == 0) {
 			printf(".");  // Progress indicator
 		}
-		for (volatile int i = 0; i < 100; i++);
+		osDelay(1); // Yield to other tasks
 	}
 }
 
@@ -181,7 +179,7 @@ long read_average(hx711_t *hx711, int8_t times, uint8_t channel) {
 	for (int8_t i = 0; i < times; i++) {
 		sum += read(hx711, channel);
 		// Small delay between reads
-		for (volatile int j = 0; j < 1000; j++);
+		osDelay(1);
 	}
 	return sum / times;
 }
@@ -219,4 +217,64 @@ float get_weight(hx711_t *hx711, int8_t times, uint8_t channel) {
 	if (channel == CHANNEL_A) scale = hx711->Ascale;
 	else scale = hx711->Bscale;
 	return get_value(hx711, times, channel) / scale;
+}
+
+//############################################################################################
+void HX711_Calibration(void) {
+
+	// hx711_init(&hx711, GPIOB, GPIO_PIN_14, GPIOB, GPIO_PIN_15);
+	
+	// Check if HX711 is responsive - wait for LOW state with strict timeout
+	printf("檢查 HX711 狀態...\r\n");
+	uint32_t check_timeout = 0;
+	uint32_t max_check = 5000; // ~5 seconds (assuming 1ms delay)
+	
+	while (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_15) == GPIO_PIN_SET) {
+		check_timeout++;
+		if (check_timeout > max_check) {
+			printf("[警告] HX711 無響應！DOUT 持續為 HIGH\r\n");
+			printf("DT電壓異常 (應為 0V 或 3.3V)，可能原因：\r\n");
+			printf("  1) VCC/GND 未正確供電\r\n");
+			printf("  2) 稱重傳感器未連接\r\n");
+			printf("  3) HX711 模組損壞\r\n");
+			printf("跳過校準程序，使用默認值繼續啟動...\r\n");
+			// 設置默認值以便系統繼續運行
+			set_scale(&hx711, 1.0f, 1.0f);
+			set_offset(&hx711, 0, CHANNEL_A);
+			return;
+		}
+		// Print progress every 500ms
+		if (check_timeout % 500 == 0) {
+			printf(".");
+		}
+		osDelay(1);
+	}
+	
+	printf("\r\nHX711 已響應 (DOUT=LOW)，開始校準...\r\n");
+	
+	// 1. 初始化 Scale 為 1，避免除以零或錯誤計算
+	set_scale(&hx711, 1.0f, 1.0f);
+
+	// 2. 歸零 (Tare) - 設定空秤時的 Offset
+	// 讀取 10 次取平均，確保穩定
+	printf("請清空秤盤，準備歸零...\r\n");
+	osDelay(2000); // 等待穩定
+	tare(&hx711, 10, CHANNEL_A);
+	printf("歸零完成。Offset: %ld\r\n", hx711.Aoffset);
+
+	// 3. 測量已知重量
+	printf("請放上 %.2f單位的砝碼...\r\n", KNOWN_WEIGHT_VALUE);
+	osDelay(5000); // 給予足夠時間放上砝碼並等待數值穩定
+
+	// 4. 獲取扣除 Offset 後的原始數值 (get_value 會回傳 Raw - Offset)
+	double raw_diff = get_value(&hx711, 10, CHANNEL_A);
+
+	// 5. 計算比例因子 (Scale Factor)
+	float new_scale = (float)(raw_diff / KNOWN_WEIGHT_VALUE);
+
+	// 6. 設定新的 Scale
+	set_scale(&hx711, new_scale, 1.0f); // 假設只校正 Channel A
+
+	printf("校正完成！計算出的 Scale: %f\r\n", new_scale);
+	printf("現在可以使用 get_weight() 獲取準確重量。\r\n");
 }
