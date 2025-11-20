@@ -11,11 +11,11 @@
 
 osThreadId_t gcodeRxTaskHandle = NULL;
 SemaphoreHandle_t fileSemaphore = NULL;
-uartRxBuf_TypeDef fileBuf;
+// uartRxBuf_TypeDef fileBuf;
 
 QueueHandle_t xFileQueue = NULL;
 StaticQueue_t fileQueue_s;
-uint8_t fileQueueArea[FILE_QUEUE_LEN * sizeof(fileBuf)];
+uint8_t fileQueueArea[FILE_QUEUE_LEN * sizeof(uartRxBuf_TypeDef *)];
 
 const osThreadAttr_t gcodeTask_attributes = {
 	.name = "Gcode_Rx_Task",
@@ -43,6 +43,17 @@ static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx);
 static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx);
 static RECV_STATUS_TypeDef transmittingOverStage(transmittingCtx_TypeDef* ctx, void* _argument);
 
+void FileTask_Init(void) {
+	xFileQueue = xQueueCreateStatic(FILE_QUEUE_LEN,
+									sizeof(uartRxBuf_TypeDef *),
+									fileQueueArea,
+									&fileQueue_s);
+	if (xFileQueue == NULL) {
+		printf("%-20s fileQueue Init Failed!\r\n", "[fileTask.c]");
+	} else {
+		printf("%-20s fileQueue Inited.\r\n", "[fileTask.c]");
+	}
+}
 
 void Gcode_RxHandler_Task(void *argument) {
 	transmittingCtx_TypeDef transmittingCtx;
@@ -73,13 +84,11 @@ static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx) {
 	sha256_init(&ctx->sha256_ctx);
 #endif
 
-	xFileQueue = xQueueCreateStatic(FILE_QUEUE_LEN,
-									sizeof(fileBuf),
-									fileQueueArea,
-									&fileQueue_s);
-	if (xFileQueue == NULL) {
-		printf("%-20s fileQueue is NULL\r\n", "[fileTask.c]");
+	// 重置佇列，清除舊資料
+	if (xFileQueue != NULL) {
+		xQueueReset(xFileQueue);
 	}
+
 	printf("%-20s creating %s... \r\n", "[fileTask.c]", curFileName);
 
 	ctx->f_res = f_open(&ctx->file, curFileName, FA_CREATE_ALWAYS | FA_WRITE);
@@ -113,50 +122,55 @@ static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx) {
 static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx) {
 	UINT fnum = 0;
 	uint32_t packageNum = 0;		// 檔案接收次數計數器
-	uint16_t timeoutCnt = 0;		// 超時檢查計數器
+	static uint16_t timeoutCnt = 0;		// 超時檢查計數器
 	bool received_data = false;
+	uartRxBuf_TypeDef *pFileBuf = NULL;
 
-	received_data = xQueueReceive(xFileQueue, &fileBuf, pdMS_TO_TICKS(1000));
+	received_data = xQueueReceive(xFileQueue, &pFileBuf, pdMS_TO_TICKS(1000));
 
 	/*========== 正常接收檔案 ==========*/
-	if (received_data && fileBuf.len != 0) {
-		timeoutCnt = 0;
-		packageNum++;
-		ctx->f_res = f_write(&ctx->file, fileBuf.data, fileBuf.len, &fnum);
-		if (ctx->f_res != FR_OK) {
-			printf_fatfs_error(ctx->f_res);
-			return RECV_FAIL;
-		} else {
-			ctx->fnumCount += fnum;
-			if (packageNum >= 10) { // 分析堆棧使用狀況
-				packageNum = 0;
-				if (uxTaskGetStackHighWaterMark(NULL) < ctx->stackHighWaterMark) {
-					ctx->stackHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
+	if (received_data && pFileBuf != NULL) {
+		if (pFileBuf->len != 0) {
+			timeoutCnt = 0;
+			packageNum++;
+			ctx->f_res = f_write(&ctx->file, pFileBuf->data, pFileBuf->len, &fnum);
+			if (ctx->f_res != FR_OK) {
+				printf_fatfs_error(ctx->f_res);
+				xQueueSend(xFreeBufferQueue, &pFileBuf, 0);
+				return RECV_FAIL;
+			} else {
+				ctx->fnumCount += fnum;
+				if (packageNum >= 10) { // 分析堆棧使用狀況
+					packageNum = 0;
+					if (uxTaskGetStackHighWaterMark(NULL) < ctx->stackHighWaterMark) {
+						ctx->stackHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
+					}
 				}
-			}
 #if USE_SHA256
-			sha256_update(&ctx->sha256_ctx, fileBuf.data, fileBuf.len);
+				sha256_update(&ctx->sha256_ctx, pFileBuf->data, pFileBuf->len);
 #endif
+			}
+			xQueueSend(xFreeBufferQueue, &pFileBuf, 0);
+			return RECV_OK;
+		} else {
+			// len == 0
+			xQueueSend(xFreeBufferQueue, &pFileBuf, 0);
 		}
-		memset(fileBuf.data, 0, UART_RX_BUFFER_SIZE);
-		fileBuf.len = 0;
 
-	/*========== 檔案接收完畢 ==========*/
-	} else if (received_data != true && fileBuf.len == 0) {
-		return RECV_OK;
-
-	/*========== 超時錯誤檢測 ==========*/
+	/*========== 超時 (received_data == false) ==========*/
 	} else {
-		// f_sync(&ctx->file);
-		timeoutCnt++;
-		if (timeoutCnt >= 5) {
-			printf("%-20s timeout waiting for uart\r\n", "[fileTask.c]");
-			UART_SendString_DMA(&ESP32_USART_PORT, "reset\n");
-			return RECV_FAIL;
-		}
+		return RECV_OK;
 	}
 
-	/*========== 正常不會跑到這裡 ==========*/
+	/*========== 收到空包 (len == 0) 視為潛在超時或結束信號 ==========*/
+	// f_sync(&ctx->file);
+	timeoutCnt++;
+	if (timeoutCnt >= 5) {
+		printf("%-20s timeout waiting for uart\r\n", "[fileTask.c]");
+		UART_SendString_DMA(&ESP32_USART_PORT, "reset\n");
+		return RECV_FAIL;
+	}
+
 	return RECV_OK;
 }
 
@@ -183,10 +197,12 @@ static RECV_STATUS_TypeDef transmittingOverStage(transmittingCtx_TypeDef* ctx, v
 	printf("%-20s minimum stack size: %u\r\n", "[fileTask.c]", ctx->stackHighWaterMark);
 	printf("%-20s total time: %dms\r\n", "[fileTask.c]", tmp);
 
-	if (xFileQueue != NULL) {
-		vQueueDelete(xFileQueue);
-		xFileQueue = NULL;
-	}
+	// 不再刪除佇列，保留給下次使用
+	// if (xFileQueue != NULL) {
+	// 	vQueueDelete(xFileQueue);
+	// 	xFileQueue = NULL;
+	// }
+	gcodeRxTaskHandle = NULL;
 	vTaskDelete(NULL);
 	return RECV_OK;
 }
@@ -213,19 +229,19 @@ void calFileHash(char* hashOutput) {
 	char fileBuf[256];
 
 	if (hashOutput == NULL) {
-		printf("%-20s arg err!!\r\n", "[printerController.c]");
+		printf("%-20s arg err!!\r\n", "[fileTask.c]");
 		return;
 	}
 
 	f_res = f_open(&tmpFile, curFileName, FA_READ);
 	if (f_res != FR_OK) {
 		f_close(&tmpFile);
-		printf("%-20s Failed to open file: %s\r\n", "[printerController.c]", curFileName);
+		printf("%-20s Failed to open file: %s\r\n", "[fileTask.c]", curFileName);
 		return;
 	}
 	if (f_size(&tmpFile) <= 0) {
 		f_close(&tmpFile);
-		printf("%-20s file has no content\r\n", "[printerController.c]");
+		printf("%-20s file has no content\r\n", "[fileTask.c]");
 		return;
 	}
 	sha256_init(&sha256_ctx);

@@ -63,7 +63,7 @@ int main(void) {
 	/*------------CUSTOMIZE FUNC INIT------------*/
 	LED_GPIO_Config();
 	XPT2046_Init();
-	ESP32_Init();
+
 	PC_init();
 	hx711_init(&hx711, GPIOB, GPIO_PIN_14, GPIOB, GPIO_PIN_15);
 	// HX711_Calibration(); // 需在 RTOS 任務中呼叫

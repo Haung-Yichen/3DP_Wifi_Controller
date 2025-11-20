@@ -26,7 +26,10 @@ typedef struct {
 } UartSync_t;
 
 static UartSync_t gUartSync[UART_COUNT];
-uartRxBuf_TypeDef uartRxBuf;
+// uartRxBuf_TypeDef uartRxBuf;
+uartRxBuf_TypeDef rxBufPool[RX_BUFFER_POOL_SIZE];
+uartRxBuf_TypeDef *pCurrentRxBuf;
+QueueHandle_t xFreeBufferQueue;
 
 // 核心 DMA 傳輸函式 (內部使用)
 static HAL_StatusTypeDef _UART_SendBuffer_DMA(UART_HandleTypeDef *huart, const uint8_t *data, size_t len);
@@ -74,6 +77,23 @@ void Uart_Sync_Init(void) {
 	}
 
 	printf("%-20s uart thread safe inited.\r\n", "usart.c");
+}
+
+void Uart_Rx_Pool_Init(void) {
+	xFreeBufferQueue = xQueueCreate(RX_BUFFER_POOL_SIZE, sizeof(uartRxBuf_TypeDef *));
+	if (xFreeBufferQueue == NULL) {
+		printf("%-20s FreeBufferQueue Init Failed!\r\n", "usart.c");
+		Error_Handler();
+	}
+
+	// 將緩衝區加入池中 (保留第一個給初始接收使用)
+	for (int i = 1; i < RX_BUFFER_POOL_SIZE; i++) {
+		uartRxBuf_TypeDef *pBuf = &rxBufPool[i];
+		xQueueSend(xFreeBufferQueue, &pBuf, 0);
+	}
+
+	pCurrentRxBuf = &rxBufPool[0];
+	printf("%-20s Rx Pool inited.\r\n", "usart.c");
 }
 
 /* USART1 init function */
@@ -425,6 +445,27 @@ HAL_StatusTypeDef UART_SendString_DMA(UART_HandleTypeDef *huart, const char *str
 
 	size_t len = strlen(str);
 	return _UART_SendBuffer_DMA(huart, (const uint8_t *) str, len);
+}
+
+/**
+ * @brief UART 錯誤回調函數
+ * @note  當發生 Overrun, Noise, Framing 等錯誤時，HAL 會呼叫此函數。
+ *        必須在此重新啟動 DMA 接收，否則接收會停止。
+ */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
+	if (huart->Instance == ESP32_USART_PORT.Instance) {
+		// 嘗試清除錯誤標誌 (雖然 HAL_UART_IRQHandler 通常已經處理了)
+		__HAL_UART_CLEAR_OREFLAG(huart);
+		__HAL_UART_CLEAR_NEFLAG(huart);
+		__HAL_UART_CLEAR_FEFLAG(huart);
+		__HAL_UART_CLEAR_PEFLAG(huart);
+
+		// 重新啟動 DMA 接收
+		HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
+		
+		// 可以選擇打印錯誤日誌，但在中斷中要小心
+		// printf("%-20s UART Error Recovered (Code: 0x%x)\r\n", "[usart.c]", huart->ErrorCode);
+	}
 }
 
 /* USER CODE END 1 */

@@ -30,6 +30,7 @@
 #include "gpio.h"
 #include "UITask.h"
 #include "hx711.h"
+#include "fileTask.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -159,6 +160,8 @@ void MX_FREERTOS_Init(void) {
   */
 /* USER CODE END Header_StartDefaultTask */
 void StartDefaultTask(void *argument) {
+	FileTask_Init(); // 初始化檔案任務佇列
+	ESP32_Init();
 	// hx711_t hx711;
 	// float weight;
 	//

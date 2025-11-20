@@ -231,19 +231,30 @@ void USART2_IRQHandler(void) {
 
 	if (__HAL_UART_GET_FLAG(&ESP32_USART_PORT, UART_FLAG_IDLE)) {
 		__HAL_UART_CLEAR_IDLEFLAG(&ESP32_USART_PORT);
-		HAL_UART_DMAStop(&ESP32_USART_PORT);
-		uartRxBuf.len = UART_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(ESP32_USART_PORT.hdmarx);
-		if (uartRxBuf.len) {
+		// HAL_UART_DMAStop(&ESP32_USART_PORT); // 錯誤：這會同時停止 TX DMA，導致死鎖
+		HAL_UART_AbortReceive(&ESP32_USART_PORT); // 改用只停止 RX DMA
+
+		pCurrentRxBuf->len = UART_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(ESP32_USART_PORT.hdmarx);
+		if (pCurrentRxBuf->len) {
 			//判斷數據是不是命令
-			if (uartRxBuf.data[0] == 'c') {
-				xQueueSendFromISR(xCmdQueue, &uartRxBuf.data, xHigherPriorityTaskWoken);
+			if (pCurrentRxBuf->data[0] == 'c') {
+				xQueueSendFromISR(xCmdQueue, &pCurrentRxBuf->data, &xHigherPriorityTaskWoken);
 			} else if (isTransmittimg) {
-				xQueueSendFromISR(xFileQueue, &uartRxBuf, xHigherPriorityTaskWoken);
+				xQueueSendFromISR(xFileQueue, &pCurrentRxBuf, &xHigherPriorityTaskWoken);
+				
+				// 嘗試獲取新的緩衝區
+				uartRxBuf_TypeDef *pNewBuf = NULL;
+				if (xQueueReceiveFromISR(xFreeBufferQueue, &pNewBuf, &xHigherPriorityTaskWoken) == pdTRUE) {
+					pCurrentRxBuf = pNewBuf;
+				} else {
+					// 無可用緩衝區，重複使用當前緩衝區 (可能會導致數據損壞)
+					// 可以在這裡添加錯誤計數或標誌
+				}
 			}
 		}
 		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-		memset(uartRxBuf.data, 0, UART_RX_BUFFER_SIZE);
-		HAL_UART_Receive_DMA(&ESP32_USART_PORT, uartRxBuf.data, sizeof(uartRxBuf.data));
+		memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
+		HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
 	}
 	HAL_UART_IRQHandler(&ESP32_USART_PORT); // 讓 HAL 處理其他 UART 相關的中斷
 }
