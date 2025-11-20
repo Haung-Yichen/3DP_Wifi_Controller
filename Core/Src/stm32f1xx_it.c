@@ -231,21 +231,37 @@ void USART2_IRQHandler(void) {
 
 	if (__HAL_UART_GET_FLAG(&ESP32_USART_PORT, UART_FLAG_IDLE)) {
 		__HAL_UART_CLEAR_IDLEFLAG(&ESP32_USART_PORT);
-		HAL_UART_DMAStop(&ESP32_USART_PORT);
-		uartRxBuf.len = UART_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(ESP32_USART_PORT.hdmarx);
-		if (uartRxBuf.len) {
+		HAL_UART_AbortReceive(&ESP32_USART_PORT);
+
+		pCurrentRxBuf->len = UART_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(ESP32_USART_PORT.hdmarx);
+		if (pCurrentRxBuf->len) {
 			//判斷數據是不是命令
-			if (uartRxBuf.data[0] == 'c') {
-				xQueueSendFromISR(xCmdQueue, &uartRxBuf.data, xHigherPriorityTaskWoken);
+			if (pCurrentRxBuf->data[0] == 'c') {
+				xQueueSendFromISR(xCmdQueue, &pCurrentRxBuf->data, &xHigherPriorityTaskWoken);
+				memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
 			} else if (isTransmittimg) {
-				xQueueSendFromISR(xFileQueue, &uartRxBuf, xHigherPriorityTaskWoken);
+				// 先嘗試獲取新緩衝區再發送當前緩衝區指標
+				uartRxBuf_TypeDef *pNewBuf = NULL;
+				if (xQueueReceiveFromISR(xFreeBufferQueue, &pNewBuf, &xHigherPriorityTaskWoken) == pdTRUE) {
+					// 成功取得新緩衝區，發送舊緩衝區
+					xQueueSendFromISR(xFileQueue, &pCurrentRxBuf, &xHigherPriorityTaskWoken);
+					pCurrentRxBuf = pNewBuf;
+					memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
+				} else {
+					// 無可用緩衝區，丟棄當前數據
+					memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
+				}
+			} else {
+				// 非命令且非傳輸中，丟棄數據
+				memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
 			}
+		} else {
+			memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
 		}
 		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-		memset(uartRxBuf.data, 0, UART_RX_BUFFER_SIZE);
-		HAL_UART_Receive_DMA(&ESP32_USART_PORT, uartRxBuf.data, sizeof(uartRxBuf.data));
+		HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
 	}
-	HAL_UART_IRQHandler(&ESP32_USART_PORT); // 讓 HAL 處理其他 UART 相關的中斷
+	HAL_UART_IRQHandler(&ESP32_USART_PORT);
 }
 
 /**

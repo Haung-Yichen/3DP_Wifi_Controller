@@ -19,9 +19,11 @@ uint8_t cmdQueueArea[10 * CMD_BUF_SIZE];
 static ESP32_STATE_TypeDef currentState = ESP32_INIT;
 
 void ESP32_Init(void) {
+	Uart_Rx_Pool_Init();
+	FileTask_Init(); // 初始化檔案任務佇列
 	ESP32_SetState(ESP32_INIT);
-	memset(uartRxBuf.data, 0, UART_RX_BUFFER_SIZE);
-	HAL_UART_Receive_DMA(&ESP32_USART_PORT, uartRxBuf.data, sizeof(uartRxBuf.data));
+	memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
+	HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
 	__HAL_UART_ENABLE_IT(&ESP32_USART_PORT, UART_IT_IDLE);
 	ESP32_RegCallback();
 }
@@ -55,7 +57,7 @@ void ESP32_CmdHandler_Task(void *argument) {
 
 	while (1) {
 		if (xQueueReceive(xCmdQueue, _cmdBuf, pdMS_TO_TICKS(1000))) {
-			_cmdBuf[uartRxBuf.len] = '\0';
+			_cmdBuf[CMD_BUF_SIZE - 1] = '\0';
 			if (isValidCmd(_cmdBuf) == CMD_OK) {
 				execute_command(_cmdBuf, isReqCmd(_cmdBuf) ? &resStruct : NULL);
 				if (strlen(resStruct.resBuf) != 0) {
@@ -122,21 +124,25 @@ void SetFileNameHandler(const char *args, ResStruct_t *_resStruct) {
  */
 void TransmissionOverHandler(const char *args, ResStruct_t *_resStruct) {
 	delete = true;
-	uartRxBuf.len = 0;
-	xQueueSend(xFileQueue, &uartRxBuf, pdMS_TO_TICKS(10));
+	uartRxBuf_TypeDef *pNullBuf = NULL;
+	
+	// 檢查佇列是否存在，避免在任務已因錯誤結束後存取空指標
+	if (xFileQueue != NULL) {
+		xQueueSend(xFileQueue, &pNullBuf, pdMS_TO_TICKS(10));
+	}
 
 	vTaskDelay(pdMS_TO_TICKS(10));
 	ESP32_SetState(ESP32_IDLE);
 	UART_SendString_DMA(&ESP32_USART_PORT, ESP32_OK);
 
 	// 等待任務終止
-	for (int i = 0; i < 1000; i++) {
-		eTaskState state = eTaskGetState(gcodeRxTaskHandle);
-		if (state == eDeleted) {
-			gcodeRxTaskHandle = NULL;
-			break;
+	if (gcodeRxTaskHandle != NULL) {
+		for (int i = 0; i < 1000; i++) {
+			if (gcodeRxTaskHandle == NULL) {
+				break;
+			}
+			vTaskDelay(pdMS_TO_TICKS(10));
 		}
-		vTaskDelay(pdMS_TO_TICKS(10));
 	}
 	char srcHash[70] = {0};
 	extract_parameter(args, srcHash, SHA256_HASH_SIZE);

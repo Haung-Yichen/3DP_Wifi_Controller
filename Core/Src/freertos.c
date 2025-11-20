@@ -163,7 +163,7 @@ void StartDefaultTask(void *argument) {
 	// float weight;
 	//
 	// init_weight(&hx711);
-
+	ESP32_Init();
 	for (;;) {
 		// weight = measure_weight(&hx711);
 		// printf("%-20s Weight: %d\r\n", "[hx711]", (size_t)(weight/1000));
@@ -174,7 +174,7 @@ void StartDefaultTask(void *argument) {
 
 		printf("%-20s Heap usage: %u%% (%u / %u bytes)\r\n", "[freertos.c]", usage_percent, (unsigned int) used_heap,
 		       (unsigned int) configTOTAL_HEAP_SIZE);
-		osDelay(1000);
+		osDelay(2000);
 	}
 }
 

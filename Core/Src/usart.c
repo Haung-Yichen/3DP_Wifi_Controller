@@ -26,7 +26,10 @@ typedef struct {
 } UartSync_t;
 
 static UartSync_t gUartSync[UART_COUNT];
-uartRxBuf_TypeDef uartRxBuf;
+// uartRxBuf_TypeDef uartRxBuf;
+uartRxBuf_TypeDef rxBufPool[RX_BUFFER_POOL_SIZE];
+uartRxBuf_TypeDef *pCurrentRxBuf;
+QueueHandle_t xFreeBufferQueue;
 
 // 核心 DMA 傳輸函式 (內部使用)
 static HAL_StatusTypeDef _UART_SendBuffer_DMA(UART_HandleTypeDef *huart, const uint8_t *data, size_t len);
@@ -74,6 +77,23 @@ void Uart_Sync_Init(void) {
 	}
 
 	printf("%-20s uart thread safe inited.\r\n", "usart.c");
+}
+
+void Uart_Rx_Pool_Init(void) {
+	xFreeBufferQueue = xQueueCreate(RX_BUFFER_POOL_SIZE, sizeof(uartRxBuf_TypeDef *));
+	if (xFreeBufferQueue == NULL) {
+		printf("%-20s FreeBufferQueue Init Failed!\r\n", "usart.c");
+		Error_Handler();
+	}
+
+	// 將緩衝區加入池中 (保留第一個給初始接收使用)
+	for (int i = 1; i < RX_BUFFER_POOL_SIZE; i++) {
+		uartRxBuf_TypeDef *pBuf = &rxBufPool[i];
+		xQueueSend(xFreeBufferQueue, &pBuf, 0);
+	}
+
+	pCurrentRxBuf = &rxBufPool[0];
+	printf("%-20s Rx Pool inited.\r\n", "usart.c");
 }
 
 /* USART1 init function */
