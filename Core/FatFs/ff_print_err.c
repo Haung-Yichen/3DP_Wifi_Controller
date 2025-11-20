@@ -3,7 +3,7 @@
 void printf_fatfs_error(FRESULT fresult) {
 	switch (fresult) {
 		case FR_OK:
-			printf("%-20s 》操作成功。\r\n", "[ff_printer_err.c]");
+			printf("%-20s 操作成功。\r\n", "[ff_printer_err.c]");
 			break;
 		case FR_DISK_ERR:
 			printf("%-20s ！！硬體輸入輸出驅動錯誤。\r\n", "[ff_printer_err.c]");

@@ -148,12 +148,13 @@ void DebugMon_Handler(void) {
 
 /**
   * @brief This function handles System tick timer.
+  * @note  SysTick is now dedicated to FreeRTOS only. HAL timebase uses TIM6.
   */
 void SysTick_Handler(void) {
 	/* USER CODE BEGIN SysTick_IRQn 0 */
 
 	/* USER CODE END SysTick_IRQn 0 */
-	HAL_IncTick();
+	/* HAL_IncTick() removed - using TIM6 for HAL timebase */
 #if (INCLUDE_xTaskGetSchedulerState == 1 )
 	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
 #endif /* INCLUDE_xTaskGetSchedulerState */
@@ -264,6 +265,15 @@ void EXTI0_IRQHandler(void) {
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	if (GPIO_Pin == USER_KEY_PIN) {
 	}
+}
+
+/**
+  * @brief This function handles TIM6 global interrupt.
+  * @note  TIM6 is used as HAL timebase source instead of SysTick.
+  */
+void TIM6_IRQHandler(void) {
+	extern TIM_HandleTypeDef htim6;
+	HAL_TIM_IRQHandler(&htim6);
 }
 
 /* USER CODE END 1 */
