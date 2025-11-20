@@ -30,6 +30,11 @@ extern volatile bool isTransmittimg;
 void Gcode_RxHandler_Task(void *argument);
 
 /**
+ * @brief 初始化檔案任務相關資源 (如佇列)
+ */
+void FileTask_Init(void);
+
+/**
  * @brief 計算檔案sha256哈希值
  * @param hashOutput
  * @return
