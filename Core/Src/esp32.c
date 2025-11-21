@@ -18,6 +18,7 @@ StaticQueue_t cmdQueue_s;
 uint8_t cmdQueueArea[10 * CMD_BUF_SIZE];
 static ESP32_STATE_TypeDef currentState = ESP32_INIT;
 char ip[15] = {0}; // Initialize to empty string
+bool isWebConnected = false;
 
 void ESP32_Init(void) {
 	Uart_Rx_Pool_Init();
@@ -33,6 +34,7 @@ void ESP32_RegCallback(void) {
 	register_command(CMD_Start_Transmisson, StartTransmissionHandler);
 	register_command(CMD_Transmisson_Over, TransmissionOverHandler);
 	register_command(CMD_SET_FILENAME, SetFileNameHandler);
+	register_command(CMD_CLIENT_STATUS, WebStatusHandler);
 }
 
 ESP32_STATE_TypeDef ESP32_GetState(void) {
@@ -89,6 +91,12 @@ void WifiStatusHandler(const char *args, ResStruct_t *_resStruct) {
 		printf("%-20s Wifi disconnected\r\n", "[esp32.c]");
 		ESP32_SetState(ESP32_INIT);
 	}
+}
+
+void WebStatusHandler(const char *args, ResStruct_t *_resStruct) {
+	char status[5];
+	extract_parameter(args, status, 5);
+	isWebConnected = (bool)atol(status);
 }
 
 void StartTransmissionHandler(const char *args, ResStruct_t *_resStruct) {

@@ -27,21 +27,6 @@ extern SemaphoreHandle_t priOverSemaphore; //列印完成信號量
 extern osThreadId_t pcTaskHandle;
 extern const osThreadAttr_t pcTask_attributes;
 
-/*-----存放印表機各項參數-----*/
-typedef struct {
-	uint8_t hours;
-	uint8_t minutes;
-	uint8_t seconds;
-} TimeStruct_t;
-
-typedef struct {
-	uint8_t nozzleTemp;
-	uint8_t bedTemp;
-	uint16_t filamentWeight;
-	TimeStruct_t remainingTime;
-	uint8_t progress;
-} PC_Parameter_TypeDef;
-
 /*--------印表機狀態---------*/
 typedef enum {
 	PC_INIT = 0,
@@ -50,8 +35,6 @@ typedef enum {
 	PC_ERROR
 } PC_Status_TypeDef;
 
-static PC_Parameter_TypeDef pcParameter;
-static PC_Status_TypeDef pcStatus = PC_INIT;
 static uint8_t pc_TxBuf[100] = {0};
 static uint8_t pc_RxBuf[50] = {0};
 
@@ -63,6 +46,18 @@ void PC_init(void);
 void PC_RegCallback(void);
 
 void PC_Print_Task(void *argument);
+
+PC_Status_TypeDef PC_GetState(void);
+
+/**
+ * @brief 在defaultTask中輪詢，只在網頁斷線時輪詢
+ */
+void PC_SetState(PC_Status_TypeDef state);
+
+/**
+ * @brief 負責更新參數
+ */
+void PC_Param_Polling(void);
 
 /************************************************
 *                 定義回調函數                  *

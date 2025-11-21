@@ -1,16 +1,32 @@
 #include "printerController.h"
 #include <stdlib.h>
 #include "cmsis_os.h"
-#include "esp32.h"
 #include "Fatfs_SDIO.h"
+#include "esp32.h"
 #include "hx711.h"
 #include "fileTask.h"
 #include "cmdList.h"
 #include "ui_updater.h"
 
-// External page handles are now used in ui_updater.c
-// extern WM_HWIN hPage1;
-// extern WM_HWIN hPage3;
+
+/*-----存放印表機各項參數-----*/
+typedef struct {
+	uint8_t hours;
+	uint8_t minutes;
+	uint8_t seconds;
+} TimeStruct_t;
+
+typedef struct {
+	uint8_t nozzleTemp;
+	uint8_t bedTemp;
+	uint16_t filamentWeight;
+	TimeStruct_t remainingTime;
+	uint8_t progress;
+} PC_Parameter_TypeDef;
+
+
+static PC_Parameter_TypeDef pcParameter;
+static PC_Status_TypeDef pcStatus = PC_INIT;
 
 
 osThreadId_t pcTaskHandle = NULL;
@@ -77,8 +93,7 @@ void PC_Print_Task(void *argument) {
 		printf("%-20s file has no content\r\n", "[printerController.c]");
 		goto CleanRes;
 	}
-	ESP32_SetState(ESP32_BUSY);
-
+	PC_SetState(PC_BUSY);
 	//================ 取得列印時間 ================//
 	PC_ParseRemainingTime(&file);
 	//================ 開始列印 ================//
@@ -158,13 +173,37 @@ CleanRes:
 	if (file_opened) {
 		f_close(&file);
 	}
-	ESP32_SetState(ESP32_IDLE);
 	pause = false;
+	PC_SetState(PC_IDLE);
 	stopRequested = false; // 重置旗標
 	pcTaskHandle = NULL;
 	vTaskDelete(NULL);
 	// 這行 printf 永遠不應該被執行
 	// printf("%-20s !!! ERROR: Task did not terminate!\r\n", "[printerController.c]");
+}
+
+PC_Status_TypeDef PC_GetState(void) {
+	return pcStatus;
+}
+
+void PC_SetState(PC_Status_TypeDef status) {
+	pcStatus = status;
+}
+
+void PC_Param_Polling(void) {
+	// 網頁沒有連接才需要自己輪詢
+	if (isWebConnected) {
+		return;
+	}
+	// 印表機列印中才需要更新時間及進度
+	// 因為不需要回傳給esp32 故參數都給null
+	if (PC_GetState() == PC_BUSY) {
+		GetRemainingTimeHandler(NULL, NULL);
+		GetProgressHandler(NULL, NULL);
+	}
+	GetFilamentWeightHandler(NULL, NULL);
+	GetBedTempHandler(NULL, NULL);
+	GetNozzleTempHandler(NULL, NULL);
 }
 
 void StartToPrintHandler(const char *args, ResStruct_t *_resStruct) {
@@ -203,20 +242,26 @@ void GetRemainingTimeHandler(const char *args, ResStruct_t *_resStruct) {
 	int total_seconds = pcParameter.remainingTime.hours * 3600 + 
 	                    pcParameter.remainingTime.minutes * 60 + 
 	                    pcParameter.remainingTime.seconds;
-	sprintf(_resStruct->resBuf, "RemainingTime:%d\n", total_seconds);
 
+	if (_resStruct != NULL) {
+		sprintf(_resStruct->resBuf, "RemainingTime:%d\n", total_seconds);
+	}
 	UI_Update_RemainingTime(pcParameter.remainingTime.hours,
 	                        pcParameter.remainingTime.minutes,
 	                        pcParameter.remainingTime.seconds);
 }
 
 void GetProgressHandler(const char *args, ResStruct_t *_resStruct) {
-	sprintf(_resStruct->resBuf, "Progress:%d\n", pcParameter.progress);
+	if (_resStruct != NULL) {
+		sprintf(_resStruct->resBuf, "Progress:%d\n", pcParameter.progress);
+	}
 	UI_Update_Progress(pcParameter.progress);
 }
 
 void GetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
-	UART_SendString_DMA(&PRINTING_USART_PORT, "M105\r\n");
+	if (_resStruct != NULL) {
+		UART_SendString_DMA(&PRINTING_USART_PORT, "M105\r\n");
+	}
 	//藥用uart idle dma寫
 
 	// HAL_UART_Receive(&PRINTING_USART_PORT, pc_RxBuf, sizeof(pc_RxBuf), pdMS_TO_TICKS(50));
@@ -225,18 +270,21 @@ void GetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
 }
 
 void GetBedTempHandler(const char *args, ResStruct_t *_resStruct) {
-	sprintf(_resStruct->resBuf, "BedTemp:%s\n", "N/A");
+	if (_resStruct != NULL) {
+		sprintf(_resStruct->resBuf, "BedTemp:%s\n", "N/A");
+	}
 	UI_Update_BedTemp("N/A");
 }
 
 void GetFilamentWeightHandler(const char *args, ResStruct_t *_resStruct) {
-	if (isTransmittimg) {
-		sprintf(_resStruct->resBuf, "FilamentWeight:N/A\n");
+	if (ESP32_GetState() == ESP32_BUSY) {
 		return;
 	}
 	float weight_g = Hx711_GetWeight(&hx711, 3);
 	pcParameter.filamentWeight = (int)weight_g;
-	sprintf(_resStruct->resBuf, "FilamentWeight:%d\n", pcParameter.filamentWeight);
+	if (_resStruct != NULL) {
+		sprintf(_resStruct->resBuf, "FilamentWeight:%d\n", pcParameter.filamentWeight);
+	}
 	UI_Update_FilamentWeight(pcParameter.filamentWeight);
 }
 

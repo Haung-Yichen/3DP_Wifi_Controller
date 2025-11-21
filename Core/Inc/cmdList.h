@@ -20,6 +20,7 @@
 
 /*            命令            */
 #define CMD_WIFI_STATUS         (const char*)"cWifiStatus"        //wifi狀態設定
+#define CMD_CLIENT_STATUS       (const char*)"cClintStatus"       //網頁連接狀況
 #define CMD_Start_Transmisson   (const char*)"cStartTransmission" //開始傳送(檔案)
 #define CMD_Transmisson_Over    (const char*)"cTransmissionOver"  //傳送完畢(檔案)
 #define CMD_SET_FILENAME        (const char*)"cSetFilename"       //設置檔名

@@ -29,7 +29,7 @@ typedef enum {
 
 extern QueueHandle_t xCmdQueue;
 extern char ip[15];
-
+extern bool isWebConnected;
 
 /**
  * @brief 初始化 ESP32 模組，註冊回調函數，並等待直到esp32回報初始化完成
@@ -64,6 +64,11 @@ void ESP32_CmdHandler_Task(void *argument);
  * @brief 命令 : 處理esp32 wifi狀態
  */
 void WifiStatusHandler(const char *args, ResStruct_t *_resStruct);
+
+/**
+ * @brief 命令 : 處理網頁連接狀態
+ */
+void WebStatusHandler(const char *args, ResStruct_t *_resStruct);
 
 /**
  * @brief 命令 : 準備接收dcode
