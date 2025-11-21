@@ -212,3 +212,9 @@ target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
         # Add user defined libraries
 )
 
+# Add float support for printf
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -Wl,-u,_printf_float)
+
+set(HEX_FILE ${CMAKE_BINARY_DIR}/3DP_Wifi_Controller.hex)
+set(BIN_FILE ${CMAKE_BINARY_DIR}/3DP_Wifi_Controller.bin)
+

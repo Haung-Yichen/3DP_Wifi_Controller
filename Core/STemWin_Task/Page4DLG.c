@@ -29,10 +29,11 @@
 *
 **********************************************************************
 */
-#define ID_WINDOW_0        (GUI_ID_USER + 0x09)
-#define ID_BUTTON_0        (GUI_ID_USER + 0x0A)
-#define ID_BUTTON_1        (GUI_ID_USER + 0x0B)
-#define ID_TEXT_0        (GUI_ID_USER + 0x0C)
+#define ID_WINDOW_0      (GUI_ID_USER + 0x00)
+#define ID_BTN_CAM       (GUI_ID_USER + 0x01)
+#define ID_TEXT_CAM_ST   (GUI_ID_USER + 0x02)
+#define ID_TEXT_SYS_1    (GUI_ID_USER + 0x03)
+#define ID_TEXT_SYS_2    (GUI_ID_USER + 0x04)
 
 
 // USER START (Optionally insert additional defines)
@@ -53,10 +54,15 @@
 *       _aDialogCreate
 */
 static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
-  { WINDOW_CreateIndirect, "Page4", ID_WINDOW_0, 10, 0, 310, 194, 0, 0x0, 0 },
-  { BUTTON_CreateIndirect, "Enable Camera", ID_BUTTON_0, 10, 10, 90, 40, 0, 0x0, 0 },
-  { BUTTON_CreateIndirect, "Button", ID_BUTTON_1, 110, 10, 90, 40, 0, 0x0, 0 },
-  { TEXT_CreateIndirect, "S/E Camera", ID_TEXT_0, 210, 10, 80, 20, 0, 0x0, 0 },
+  { WINDOW_CreateIndirect, "Page4", ID_WINDOW_0, 0, 0, 310, 194, 0, 0x0, 0 },
+  
+  // Camera Control
+  { BUTTON_CreateIndirect, "Toggle Camera", ID_BTN_CAM, 10, 10, 140, 40, 0, 0x0, 0 },
+  { TEXT_CreateIndirect, "Camera: OFF", ID_TEXT_CAM_ST, 160, 20, 140, 20, 0, 0x0, 0 },
+
+  // System Info
+  { TEXT_CreateIndirect, "System Info:", ID_TEXT_SYS_1, 10, 70, 290, 20, 0, 0x0, 0 },
+  { TEXT_CreateIndirect, "FW: v1.0.0", ID_TEXT_SYS_2, 10, 95, 290, 20, 0, 0x0, 0 },
   // USER START (Optionally insert additional widgets)
   // USER END
 };
@@ -78,29 +84,29 @@ static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
 static void _cbDialog(WM_MESSAGE * pMsg) {
   int NCode;
   int Id;
+  WM_HWIN hItem;
   // USER START (Optionally insert additional variables)
   // USER END
 
   switch (pMsg->MsgId) {
+  case WM_INIT_DIALOG:
+    hItem = pMsg->hWin;
+    WINDOW_SetBkColor(hItem, GUI_BLACK);
+
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_CAM_ST);
+    TEXT_SetTextColor(hItem, GUI_RED);
+    TEXT_SetFont(hItem, GUI_FONT_16B_1);
+
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_SYS_1);
+    TEXT_SetTextColor(hItem, GUI_LIGHTGRAY);
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_SYS_2);
+    TEXT_SetTextColor(hItem, GUI_WHITE);
+    break;
   case WM_NOTIFY_PARENT:
     Id    = WM_GetId(pMsg->hWinSrc);
     NCode = pMsg->Data.v;
     switch(Id) {
-    case ID_BUTTON_0: // Notifications sent by 'Enable Camera'
-      switch(NCode) {
-      case WM_NOTIFICATION_CLICKED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_RELEASED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      // USER START (Optionally insert additional code for further notification handling)
-      // USER END
-      }
-      break;
-    case ID_BUTTON_1: // Notifications sent by 'Button'
+    case ID_BTN_CAM: // Notifications sent by 'Toggle Camera'
       switch(NCode) {
       case WM_NOTIFICATION_CLICKED:
         // USER START (Optionally insert code for reacting on notification message)
@@ -136,11 +142,11 @@ static void _cbDialog(WM_MESSAGE * pMsg) {
 *
 *       CreatePage4
 */
-WM_HWIN CreatePage4(void);
-WM_HWIN CreatePage4(void) {
+WM_HWIN CreatePage4(WM_HWIN hParent);
+WM_HWIN CreatePage4(WM_HWIN hParent) {
   WM_HWIN hWin;
 
-  hWin = GUI_CreateDialogBox(_aDialogCreate, GUI_COUNTOF(_aDialogCreate), _cbDialog, WM_HBKWIN, 0, 0);
+  hWin = GUI_CreateDialogBox(_aDialogCreate, GUI_COUNTOF(_aDialogCreate), _cbDialog, hParent, 0, 0);
   return hWin;
 }
 

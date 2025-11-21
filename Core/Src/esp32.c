@@ -17,10 +17,10 @@ QueueHandle_t xCmdQueue = NULL;
 StaticQueue_t cmdQueue_s;
 uint8_t cmdQueueArea[10 * CMD_BUF_SIZE];
 static ESP32_STATE_TypeDef currentState = ESP32_INIT;
+char ip[15];
 
 void ESP32_Init(void) {
 	Uart_Rx_Pool_Init();
-
 	ESP32_SetState(ESP32_INIT);
 	memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
 	HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
@@ -77,7 +77,6 @@ void ESP32_CmdHandler_Task(void *argument) {
 
 void WifiStatusHandler(const char *args, ResStruct_t *_resStruct) {
 	char wifiStatus[20] = {0};
-	char ip[20] = {0};
 
 	extract_parameter(args, wifiStatus, 20);
 	if (wifiStatus[0] == '1') {

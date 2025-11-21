@@ -29,14 +29,14 @@
 *
 **********************************************************************
 */
-#define ID_WINDOW_0        (GUI_ID_USER + 0x00)
-#define ID_BUTTON_0        (GUI_ID_USER + 0x01)
-#define ID_BUTTON_1        (GUI_ID_USER + 0x02)
-#define ID_TEXT_0        (GUI_ID_USER + 0x03)
-#define ID_TEXT_1        (GUI_ID_USER + 0x05)
-#define ID_BUTTON_2        (GUI_ID_USER + 0x06)
-#define ID_SPINBOX_0        (GUI_ID_USER + 0x08)
-#define ID_PROGBAR_0        (GUI_ID_USER + 0x09)
+#define ID_WINDOW_0      (GUI_ID_USER + 0x00)
+#define ID_TEXT_NOZ      (GUI_ID_USER + 0x01)
+#define ID_SPIN_NOZ      (GUI_ID_USER + 0x02)
+#define ID_BTN_SET_NOZ   (GUI_ID_USER + 0x03)
+#define ID_TEXT_BED      (GUI_ID_USER + 0x04)
+#define ID_SPIN_BED      (GUI_ID_USER + 0x05)
+#define ID_BTN_SET_BED   (GUI_ID_USER + 0x06)
+#define ID_BTN_HOME      (GUI_ID_USER + 0x07)
 
 
 // USER START (Optionally insert additional defines)
@@ -57,14 +57,20 @@
 *       _aDialogCreate
 */
 static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
-  { WINDOW_CreateIndirect, "Page2", ID_WINDOW_0, 1, 0, 310, 194, 0, 0x0, 0 },
-  { BUTTON_CreateIndirect, "Nozzle Temp", ID_BUTTON_0, 10, 10, 90, 40, 0, 0x0, 0 },
-  { BUTTON_CreateIndirect, "SET Nozzle Temp", ID_BUTTON_1, 110, 75, 90, 40, 0, 0x0, 0 },
-  { TEXT_CreateIndirect, "Temp", ID_TEXT_0, 110, 10, 90, 40, 0, 0x0, 0 },
-  { TEXT_CreateIndirect, "S/E", ID_TEXT_1, 210, 75, 90, 40, 0, 0x0, 0 },
-  { BUTTON_CreateIndirect, "Progress", ID_BUTTON_2, 10, 140, 90, 40, 0, 0x0, 0 },
-  { SPINBOX_CreateIndirect, "Spinbox Nozzle", ID_SPINBOX_0, 10, 75, 90, 40, 0, 0x0, 0 },
-  { PROGBAR_CreateIndirect, "Progbar", ID_PROGBAR_0, 110, 140, 180, 40, 0, 0x0, 0 },
+  { WINDOW_CreateIndirect, "Page2", ID_WINDOW_0, 0, 0, 310, 194, 0, 0x0, 0 },
+  
+  // Nozzle Control
+  { TEXT_CreateIndirect, "Nozzle Temp (C)", ID_TEXT_NOZ, 10, 10, 120, 20, 0, 0x0, 0 },
+  { SPINBOX_CreateIndirect, "SpinNoz", ID_SPIN_NOZ, 10, 35, 100, 35, 0, 0x0, 0 },
+  { BUTTON_CreateIndirect, "SET", ID_BTN_SET_NOZ, 120, 35, 60, 35, 0, 0x0, 0 },
+
+  // Bed Control
+  { TEXT_CreateIndirect, "Bed Temp (C)", ID_TEXT_BED, 10, 80, 120, 20, 0, 0x0, 0 },
+  { SPINBOX_CreateIndirect, "SpinBed", ID_SPIN_BED, 10, 105, 100, 35, 0, 0x0, 0 },
+  { BUTTON_CreateIndirect, "SET", ID_BTN_SET_BED, 120, 105, 60, 35, 0, 0x0, 0 },
+
+  // Movement
+  { BUTTON_CreateIndirect, "GO HOME", ID_BTN_HOME, 200, 35, 90, 105, 0, 0x0, 0 },
   // USER START (Optionally insert additional widgets)
   // USER END
 };
@@ -86,15 +92,29 @@ static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
 static void _cbDialog(WM_MESSAGE * pMsg) {
   int NCode;
   int Id;
+  WM_HWIN hItem;
   // USER START (Optionally insert additional variables)
   // USER END
 
   switch (pMsg->MsgId) {
+  case WM_INIT_DIALOG:
+    hItem = pMsg->hWin;
+    WINDOW_SetBkColor(hItem, GUI_BLACK);
+
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_NOZ);
+    TEXT_SetTextColor(hItem, GUI_WHITE);
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_BED);
+    TEXT_SetTextColor(hItem, GUI_WHITE);
+
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_BTN_HOME);
+    // BUTTON_SetBkColor(hItem, BUTTON_CI_UNPRESSED, GUI_BLUE);
+    // BUTTON_SetTextColor(hItem, BUTTON_CI_UNPRESSED, GUI_WHITE);
+    break;
   case WM_NOTIFY_PARENT:
     Id    = WM_GetId(pMsg->hWinSrc);
     NCode = pMsg->Data.v;
     switch(Id) {
-    case ID_BUTTON_0: // Notifications sent by 'Nozzle Temp'
+    case ID_BTN_SET_NOZ: // Notifications sent by 'SET Nozzle Temp'
       switch(NCode) {
       case WM_NOTIFICATION_CLICKED:
         // USER START (Optionally insert code for reacting on notification message)
@@ -108,7 +128,7 @@ static void _cbDialog(WM_MESSAGE * pMsg) {
       // USER END
       }
       break;
-    case ID_BUTTON_1: // Notifications sent by 'SET Nozzle Temp'
+    case ID_BTN_SET_BED: // Notifications sent by 'SET Bed Temp'
       switch(NCode) {
       case WM_NOTIFICATION_CLICKED:
         // USER START (Optionally insert code for reacting on notification message)
@@ -122,7 +142,7 @@ static void _cbDialog(WM_MESSAGE * pMsg) {
       // USER END
       }
       break;
-    case ID_BUTTON_2: // Notifications sent by 'Progress'
+    case ID_BTN_HOME: // Notifications sent by 'GO HOME'
       switch(NCode) {
       case WM_NOTIFICATION_CLICKED:
         // USER START (Optionally insert code for reacting on notification message)
@@ -136,7 +156,29 @@ static void _cbDialog(WM_MESSAGE * pMsg) {
       // USER END
       }
       break;
-    case ID_SPINBOX_0: // Notifications sent by 'Spinbox Nozzle'
+    case ID_SPIN_NOZ: // Notifications sent by 'SpinNoz'
+      switch(NCode) {
+      case WM_NOTIFICATION_CLICKED:
+        // USER START (Optionally insert code for reacting on notification message)
+        // USER END
+        break;
+      case WM_NOTIFICATION_RELEASED:
+        // USER START (Optionally insert code for reacting on notification message)
+        // USER END
+        break;
+      case WM_NOTIFICATION_MOVED_OUT:
+        // USER START (Optionally insert code for reacting on notification message)
+        // USER END
+        break;
+      case WM_NOTIFICATION_VALUE_CHANGED:
+        // USER START (Optionally insert code for reacting on notification message)
+        // USER END
+        break;
+      // USER START (Optionally insert additional code for further notification handling)
+      // USER END
+      }
+      break;
+    case ID_SPIN_BED: // Notifications sent by 'SpinBed'
       switch(NCode) {
       case WM_NOTIFICATION_CLICKED:
         // USER START (Optionally insert code for reacting on notification message)
@@ -180,11 +222,11 @@ static void _cbDialog(WM_MESSAGE * pMsg) {
 *
 *       CreatePage2
 */
-WM_HWIN CreatePage2(void);
-WM_HWIN CreatePage2(void) {
+WM_HWIN CreatePage2(WM_HWIN hParent);
+WM_HWIN CreatePage2(WM_HWIN hParent) {
   WM_HWIN hWin;
 
-  hWin = GUI_CreateDialogBox(_aDialogCreate, GUI_COUNTOF(_aDialogCreate), _cbDialog, WM_HBKWIN, 0, 0);
+  hWin = GUI_CreateDialogBox(_aDialogCreate, GUI_COUNTOF(_aDialogCreate), _cbDialog, hParent, 0, 0);
   return hWin;
 }
 

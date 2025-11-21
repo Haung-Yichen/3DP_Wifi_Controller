@@ -28,6 +28,7 @@ typedef enum {
 } ESP32_STATE_TypeDef;
 
 extern QueueHandle_t xCmdQueue;
+extern char ip[15];
 
 
 /**

@@ -6,13 +6,10 @@
 
 #define SD_RTY_TIMES			 2			//sd寫檔重試次數
 #define USE_SHA256               1
-#define FILE_QUEUE_LEN			 4
+#define FILE_QUEUE_LEN			 10
 
 
 osThreadId_t gcodeRxTaskHandle = NULL;
-SemaphoreHandle_t fileSemaphore = NULL;
-// uartRxBuf_TypeDef fileBuf;
-
 QueueHandle_t xFileQueue = NULL;
 StaticQueue_t fileQueue_s;
 uint8_t fileQueueArea[FILE_QUEUE_LEN * sizeof(uartRxBuf_TypeDef *)];

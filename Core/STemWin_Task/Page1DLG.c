@@ -23,10 +23,7 @@
 // USER END
 
 #include "DIALOG.h"
-#include "FreeRTOS.h"
-#include "cmdList.h"
-#include "queue.h"
-#include "esp32.h"
+
 
 /*********************************************************************
 *
@@ -34,14 +31,17 @@
 *
 **********************************************************************
 */
-#define ID_WINDOW_0        (GUI_ID_USER + 0x00)
-#define ID_BUTTON_0        (GUI_ID_USER + 0x01)
-#define ID_BUTTON_1        (GUI_ID_USER + 0x02)
-#define ID_TEXT_0        (GUI_ID_USER + 0x03)
-#define ID_BUTTON_2        (GUI_ID_USER + 0x04)
-#define ID_TEXT_1        (GUI_ID_USER + 0x05)
-#define ID_BUTTON_3        (GUI_ID_USER + 0x06)
-#define ID_TEXT_2        (GUI_ID_USER + 0x07)
+#define ID_WINDOW_0         (GUI_ID_USER + 0x00)
+#define ID_TEXT_TITLE       (GUI_ID_USER + 0x01)
+#define ID_TEXT_NOZ_PANEL   (GUI_ID_USER + 0x02)
+#define ID_TEXT_NOZ_LABEL   (GUI_ID_USER + 0x03)
+#define ID_TEXT_NOZ_VALUE   (GUI_ID_USER + 0x04)
+#define ID_TEXT_BED_PANEL   (GUI_ID_USER + 0x05)
+#define ID_TEXT_BED_LABEL   (GUI_ID_USER + 0x06)
+#define ID_TEXT_BED_VALUE   (GUI_ID_USER + 0x07)
+#define ID_PROGBAR_0        (GUI_ID_USER + 0x08)
+#define ID_TEXT_TIME        (GUI_ID_USER + 0x09)
+#define ID_TEXT_STATUS      (GUI_ID_USER + 0x0A)
 
 
 // USER START (Optionally insert additional defines)
@@ -62,16 +62,28 @@
 *       _aDialogCreate
 */
 static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
-	{WINDOW_CreateIndirect, "Page1", ID_WINDOW_0, 1, 0, 310, 194, 0, 0x0, 0},
-	{BUTTON_CreateIndirect, "Start to Print", ID_BUTTON_0, 10, 10, 90, 40, 0, 0x0, 0},
-	{BUTTON_CreateIndirect, "Pause Printing", ID_BUTTON_1, 110, 10, 90, 40, 0, 0x0, 0},
-	{TEXT_CreateIndirect, "STATE", ID_TEXT_0, 210, 10, 90, 40, 0, 0x0, 0},
-	{BUTTON_CreateIndirect, "Stop Printing", ID_BUTTON_2, 10, 75, 90, 40, 0, 0x0, 0},
-	{TEXT_CreateIndirect, "Working or NO ...", ID_TEXT_1, 110, 75, 90, 40, 0, 0x0, 0},
-	{BUTTON_CreateIndirect, "Remaining Time", ID_BUTTON_3, 10, 140, 90, 40, 0, 0x0, 0},
-	{TEXT_CreateIndirect, "h min sec", ID_TEXT_2, 110, 140, 90, 40, 0, 0x0, 0},
-	// USER START (Optionally insert additional widgets)
-	// USER END
+  { WINDOW_CreateIndirect, "Page1", ID_WINDOW_0, 0, 0, 310, 188, 0, 0x0, 0 },
+  
+  // Status
+  { TEXT_CreateIndirect, "Status: Idle", ID_TEXT_STATUS, 120, 5, 180, 24, TEXT_CF_RIGHT, 0x0, 0 },
+
+  // Nozzle Panel (Background)
+  { TEXT_CreateIndirect, "", ID_TEXT_NOZ_PANEL, 10, 35, 140, 70, 0, 0x0, 0 },
+  // Nozzle Content
+  { TEXT_CreateIndirect, "Nozzle Temp", ID_TEXT_NOZ_LABEL, 10, 45, 140, 20, TEXT_CF_HCENTER, 0x0, 0 },
+  { TEXT_CreateIndirect, "0 C", ID_TEXT_NOZ_VALUE, 10, 70, 140, 30, TEXT_CF_HCENTER, 0x0, 0 },
+
+  // Bed Panel (Background)
+  { TEXT_CreateIndirect, "", ID_TEXT_BED_PANEL, 160, 35, 140, 70, 0, 0x0, 0 },
+  // Bed Content
+  { TEXT_CreateIndirect, "Bed Temp", ID_TEXT_BED_LABEL, 160, 45, 140, 20, TEXT_CF_HCENTER, 0x0, 0 },
+  { TEXT_CreateIndirect, "N/A C", ID_TEXT_BED_VALUE, 160, 70, 140, 30, TEXT_CF_HCENTER, 0x0, 0 },
+
+  // Progress Bar
+  { PROGBAR_CreateIndirect, "Progress", ID_PROGBAR_0, 10, 120, 290, 30, 0, 0x0, 0 },
+  
+  // Time
+  { TEXT_CreateIndirect, "Time Left: --:--", ID_TEXT_TIME, 10, 160, 290, 20, TEXT_CF_HCENTER, 0x0, 0 },
 };
 
 /*********************************************************************
@@ -88,85 +100,82 @@ static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
 *
 *       _cbDialog
 */
-static void _cbDialog(WM_MESSAGE *pMsg) {
-	int NCode;
-	int Id;
-	// USER START (Optionally insert additional variables)
-	// USER END
+static void _cbDialog(WM_MESSAGE * pMsg) {
+  int NCode;
+  int Id;
+  WM_HWIN hItem;
+  // USER START (Optionally insert additional variables)
+  // USER END
 
-	switch (pMsg->MsgId) {
-		case WM_NOTIFY_PARENT:
-			Id = WM_GetId(pMsg->hWinSrc);
-			NCode = pMsg->Data.v;
-			switch (Id) {
-				case ID_BUTTON_0: // Notifications sent by 'Start to Print'
-					switch (NCode) {
-						case WM_NOTIFICATION_CLICKED:
-							// USER START (Optionally insert code for reacting on notification message)
-							// 顯示檔案選擇彈窗，選完檔案後將檔案作為參數傳進命令對列中讓execute_command處理
-							// USER END
-							break;
-						case WM_NOTIFICATION_RELEASED:
-							// USER START (Optionally insert code for reacting on notification message)
-							xQueueSend(xCmdQueue, CMD_Start_To_Print, pdMS_TO_TICKS(10));
-							// USER END
-							break;
-							// USER START (Optionally insert additional code for further notification handling)
-							// USER END
-					}
-					break;
-				case ID_BUTTON_1: // Notifications sent by 'Pause Printing'
-					switch (NCode) {
-						case WM_NOTIFICATION_CLICKED:
-							// USER START (Optionally insert code for reacting on notification message)
-							// USER END
-							break;
-						case WM_NOTIFICATION_RELEASED:
-							// USER START (Optionally insert code for reacting on notification message)
-							// USER END
-							break;
-							// USER START (Optionally insert additional code for further notification handling)
-							// USER END
-					}
-					break;
-				case ID_BUTTON_2: // Notifications sent by 'Stop Printing'
-					switch (NCode) {
-						case WM_NOTIFICATION_CLICKED:
-							// USER START (Optionally insert code for reacting on notification message)
-							// USER END
-							break;
-						case WM_NOTIFICATION_RELEASED:
-							// USER START (Optionally insert code for reacting on notification message)
-							// USER END
-							break;
-							// USER START (Optionally insert additional code for further notification handling)
-							// USER END
-					}
-					break;
-				case ID_BUTTON_3: // Notifications sent by 'Remaining Time'
-					switch (NCode) {
-						case WM_NOTIFICATION_CLICKED:
-							// USER START (Optionally insert code for reacting on notification message)
-							// USER END
-							break;
-						case WM_NOTIFICATION_RELEASED:
-							// USER START (Optionally insert code for reacting on notification message)
-							// USER END
-							break;
-							// USER START (Optionally insert additional code for further notification handling)
-							// USER END
-					}
-					break;
-					// USER START (Optionally insert additional code for further Ids)
-					// USER END
-			}
-			break;
-		// USER START (Optionally insert additional message handling)
-		// USER END
-		default:
-			WM_DefaultProc(pMsg);
-			break;
-	}
+  switch (pMsg->MsgId) {
+  case WM_INIT_DIALOG:
+    //
+    // Initialization of 'Page1'
+    //
+    hItem = pMsg->hWin;
+    WINDOW_SetBkColor(hItem, GUI_DARKGRAY);
+
+    // Status
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_STATUS);
+    TEXT_SetFont(hItem, GUI_FONT_24B_1);
+    TEXT_SetTextColor(hItem, GUI_GREEN);
+
+    // Nozzle Panel
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_NOZ_PANEL);
+    TEXT_SetBkColor(hItem, GUI_BLACK);
+
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_NOZ_LABEL);
+    TEXT_SetFont(hItem, GUI_FONT_16B_1);
+    TEXT_SetTextColor(hItem, GUI_LIGHTGRAY);
+    TEXT_SetBkColor(hItem, GUI_TRANSPARENT);
+
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_NOZ_VALUE);
+    TEXT_SetFont(hItem, GUI_FONT_24B_1);
+    TEXT_SetTextColor(hItem, GUI_GREEN);
+    TEXT_SetBkColor(hItem, GUI_TRANSPARENT);
+
+    // Bed Panel
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_BED_PANEL);
+    TEXT_SetBkColor(hItem, GUI_BLACK);
+
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_BED_LABEL);
+    TEXT_SetFont(hItem, GUI_FONT_16B_1);
+    TEXT_SetTextColor(hItem, GUI_LIGHTGRAY);
+    TEXT_SetBkColor(hItem, GUI_TRANSPARENT);
+
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_BED_VALUE);
+    TEXT_SetFont(hItem, GUI_FONT_24B_1);
+    TEXT_SetTextColor(hItem, GUI_RED);
+    TEXT_SetBkColor(hItem, GUI_TRANSPARENT);
+
+    // Progress Bar
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_PROGBAR_0);
+    PROGBAR_SetFont(hItem, GUI_FONT_16B_1);
+    PROGBAR_SetBarColor(hItem, 0, GUI_DARKGRAY);
+    PROGBAR_SetBarColor(hItem, 1, GUI_GREEN);
+
+    // Time
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_TIME);
+    TEXT_SetFont(hItem, GUI_FONT_16B_1);
+    TEXT_SetTextColor(hItem, GUI_WHITE);
+
+    // USER START (Optionally insert additional code for further widget initialization)
+    // USER END
+    break;
+  case WM_NOTIFY_PARENT:
+    Id    = WM_GetId(pMsg->hWinSrc);
+    NCode = pMsg->Data.v;
+    switch(Id) {
+      // USER START (Optionally insert additional code for further Ids)
+      // USER END
+    }
+    break;
+  // USER START (Optionally insert additional message handling)
+  // USER END
+  default:
+    WM_DefaultProc(pMsg);
+    break;
+  }
 }
 
 /*********************************************************************
@@ -179,12 +188,12 @@ static void _cbDialog(WM_MESSAGE *pMsg) {
 *
 *       CreatePage1
 */
-WM_HWIN CreatePage1(void);
+WM_HWIN CreatePage1(WM_HWIN hParent);
 
-WM_HWIN CreatePage1(void) {
+WM_HWIN CreatePage1(WM_HWIN hParent) {
 	WM_HWIN hWin;
 
-	hWin = GUI_CreateDialogBox(_aDialogCreate, GUI_COUNTOF(_aDialogCreate), _cbDialog, WM_HBKWIN, 0, 0);
+	hWin = GUI_CreateDialogBox(_aDialogCreate, GUI_COUNTOF(_aDialogCreate), _cbDialog, hParent, 0, 0);
 	return hWin;
 }
 

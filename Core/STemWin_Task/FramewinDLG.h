@@ -25,10 +25,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "DIALOG.h"
-#include "FreeRTOS.h"
-#include "gpio.h"
-#include "stm32f1xx_hal_gpio.h"
-#include "task.h"
+
 
 /*********************************************************************
 *
@@ -46,6 +43,9 @@ extern WM_HWIN CreatePage4(WM_HWIN hParent);//new
 WM_HWIN CreateFramewin(void);
 
 void MainTask(void) {
+  GUI_CURSOR_Show();
+  GUI_Exec();
+  GUI_Delay(10);
 }
 
 // USER START (Optionally insert additional defines)
@@ -66,8 +66,9 @@ void MainTask(void) {
 *       _aDialogCreate
 */
 static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
-  { FRAMEWIN_CreateIndirect, "Framewin", ID_FRAMEWIN_0, 0, 0, 320, 240, 0, 0x64, 0 },
-  { MULTIPAGE_CreateIndirect, "Multipage", ID_MULTIPAGE_0, 0, 0, 310, 218, 0, 0x0, 0 },
+  { FRAMEWIN_CreateIndirect, "Framewin", ID_FRAMEWIN_0, 0, 0, 320, 240, WM_CF_SHOW, 0x64, 0 },
+  // Increase width to 322 and shift left by 1 to prevent scroll arrows
+  { MULTIPAGE_CreateIndirect, "Multipage", ID_MULTIPAGE_0, -1, 0, 322, 220, 0, 0x0, 0 },
   // USER START (Optionally insert additional widgets)
   // USER END
 };
@@ -98,29 +99,62 @@ static void _cbDialog(WM_MESSAGE * pMsg) {
     //
     // Initialization of 'Framewin'
     //
-    hItem = WM_GetDialogItem(pMsg->hWin, ID_MULTIPAGE_0);//new
-    // hItem �O MULTIPAGE ����� handle
-    WM_HWIN hPage1 = CreatePage1(hItem);  // �ǤJ MULTIPAGE ���� parent
-    WM_HWIN hPage2 = CreatePage2(hItem);
-    WM_HWIN hPage3 = CreatePage3(hItem);  // �ǤJ MULTIPAGE ���� parent
-    WM_HWIN hPage4 = CreatePage4(hItem);
-    // �[�J�����]�i���w��ܤ�r�^
-    MULTIPAGE_AddPage(hItem, hPage1, "Page 1");
-    MULTIPAGE_AddPage(hItem, hPage2, "Page 2");///////new
-    MULTIPAGE_AddPage(hItem, hPage3, "Page 3");
-    MULTIPAGE_AddPage(hItem, hPage4, "Page 4");///////new
-    MULTIPAGE_SelectPage(hItem, 0);
-  
-
     hItem = pMsg->hWin;
     FRAMEWIN_SetTextColor(hItem, GUI_WHITE);
+    FRAMEWIN_SetFont(hItem, GUI_FONT_16B_1);
     FRAMEWIN_SetText(hItem, "3D Printer UI");
     FRAMEWIN_SetTextAlign(hItem, GUI_TA_HCENTER | GUI_TA_VCENTER);
-    FRAMEWIN_SetClientColor(hItem, GUI_WHITE);   // �]�w�����Ȥ�ϭI����
+    FRAMEWIN_SetClientColor(hItem, GUI_BLACK);
+    FRAMEWIN_SetBarColor(hItem, 0, GUI_DARKGRAY);
+    FRAMEWIN_SetBarColor(hItem, 1, GUI_DARKGRAY);
+    FRAMEWIN_SetBorderSize(hItem, 0); // Remove borders to allow full width tabs
     
-    //FRAMEWIN_SetBarColor(hItem, 0, GUI_LIGHTBLUE); // �]�w���D�C�I����]0 ��D���D�C�^
-    // USER START (Optionally insert additional code for further widget initialization)
-    // USER END
+    // Get Multipage handle
+    hItem = WM_GetDialogItem(pMsg->hWin, ID_MULTIPAGE_0);
+    
+    // Customize Multipage (Tabs) before adding pages
+    MULTIPAGE_SetFont(hItem, GUI_FONT_16B_1);
+    MULTIPAGE_SetTabHeight(hItem, 30);
+    MULTIPAGE_SetBkColor(hItem, GUI_BLACK, MULTIPAGE_CI_ENABLED);
+    MULTIPAGE_SetTextColor(hItem, GUI_WHITE, MULTIPAGE_CI_ENABLED);
+    MULTIPAGE_SetTextColor(hItem, GUI_LIGHTGRAY, MULTIPAGE_CI_DISABLED);
+    
+    // Disable scroll buttons
+    MULTIPAGE_EnableScrollbar(hItem, 0);
+    
+    WM_HWIN hPage1 = CreatePage1(hItem);
+    WM_HWIN hPage2 = CreatePage2(hItem);
+    WM_HWIN hPage3 = CreatePage3(hItem);
+    WM_HWIN hPage4 = CreatePage4(hItem);
+    
+    MULTIPAGE_AddPage(hItem, hPage1, "Monitor");
+    MULTIPAGE_AddPage(hItem, hPage2, "Control");
+    MULTIPAGE_AddPage(hItem, hPage3, "Job");
+    MULTIPAGE_AddPage(hItem, hPage4, "System");
+    
+    // Set Tab Widths to be evenly distributed
+    // Assuming Multipage width is around 310-320. 320/4 = 80.
+    for (int i = 0; i < 4; i++) {
+        MULTIPAGE_SetTabWidth(hItem, 80, i);
+    }
+    
+    MULTIPAGE_SelectPage(hItem, 0);
+    
+    WM_CreateTimer(pMsg->hWin, 0, 1000, 0);
+    break;
+  case WM_TIMER:
+    {
+        extern char ip[];
+        char title[64];
+        // Ensure ip is null-terminated and safe to read
+        if (ip[0] != '\0') {
+            sprintf(title, "3D Printer UI      IP: %s", ip);
+        } else {
+            sprintf(title, "3D Printer UI      Wifi: Disconnected");
+        }
+        FRAMEWIN_SetText(pMsg->hWin, title);
+        WM_RestartTimer(pMsg->Data.v, 1000);
+    }
     break;
   case WM_NOTIFY_PARENT:
     Id    = WM_GetId(pMsg->hWinSrc);

@@ -3,6 +3,8 @@
 #include "cmsis_os.h"
 #include "esp32.h"
 #include "Fatfs_SDIO.h"
+#include "hx711.h"
+#include "fileTask.h"
 
 
 osThreadId_t pcTaskHandle = NULL;
@@ -19,11 +21,11 @@ static void PC_ParseRemainingTime(FIL *file);
 
 void PC_init(void) {
 	PC_RegCallback();
-	pcParameter.nozzleTemp = 30;
+	pcParameter.nozzleTemp = 0;
 	pcParameter.bedTemp = 0;
-	pcParameter.filamentWeight = 599;
-	pcParameter.progress = 50;
-	pcParameter.remainingTime = 60;
+	pcParameter.filamentWeight = 0;
+	pcParameter.progress = 0;
+	pcParameter.remainingTime = 0;
 }
 
 void PC_RegCallback(void) {
@@ -206,10 +208,16 @@ void GetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
 }
 
 void GetBedTempHandler(const char *args, ResStruct_t *_resStruct) {
-	sprintf(_resStruct->resBuf, "BedTemp:%d\n", pcParameter.bedTemp);
+	sprintf(_resStruct->resBuf, "BedTemp:%s\n", "N/A");
 }
 
 void GetFilamentWeightHandler(const char *args, ResStruct_t *_resStruct) {
+	if (isTransmittimg) {
+		sprintf(_resStruct->resBuf, "FilamentWeight:N/A\n");
+		return;
+	}
+	float weight_g = Hx711_GetWeight(&hx711, 3);
+	pcParameter.filamentWeight = (int)weight_g;
 	sprintf(_resStruct->resBuf, "FilamentWeight:%d\n", pcParameter.filamentWeight);
 }
 

@@ -39,10 +39,13 @@ void touchTask(void *argument) {
 
 void GUI_Task(void *argument) {
 	show_boot_animation();
-	CreateFramewin();       // �I�s GUIBuilder ���ͪ��D����
+	
+	WM_HWIN hWin = CreateFramewin();
+	if (hWin == 0) {
+		while(1) { osDelay(1000); }
+	}
+	
 	while (1) {
-		GUI_CURSOR_Show();
-		GUI_Exec();
-		GUI_Delay(10);        // �w����s GUI
+		MainTask();
 	}
 }
