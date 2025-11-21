@@ -35,7 +35,7 @@ void Hx711_Init(hx711_t *hx711) {
     printf("%-20s Auto-taring on initialization...\r\n", "[hx711.c]");
     
     // Check if HX711 is connected before attempting tare
-    osDelay(100); // Brief wait for stabilization
+    osDelay(2000); // Brief wait for stabilization
     if (Hx711_IsReady(hx711)) {
         Hx711_Tare(hx711, 5); // Reduced times for faster init
         printf("%-20s Initialization complete. Offset: %ld\r\n", "[hx711.c]", (long)hx711->Offset);

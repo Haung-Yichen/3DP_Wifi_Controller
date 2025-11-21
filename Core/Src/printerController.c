@@ -204,8 +204,7 @@ void GetRemainingTimeHandler(const char *args, ResStruct_t *_resStruct) {
 	                    pcParameter.remainingTime.minutes * 60 + 
 	                    pcParameter.remainingTime.seconds;
 	sprintf(_resStruct->resBuf, "RemainingTime:%d\n", total_seconds);
-	
-	// Update UI
+
 	UI_Update_RemainingTime(pcParameter.remainingTime.hours,
 	                        pcParameter.remainingTime.minutes,
 	                        pcParameter.remainingTime.seconds);
@@ -251,11 +250,6 @@ void SetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
 
 // unused
 void SetBedTempHandler(const char *args, ResStruct_t *_resStruct) {
-	// char tmp[10] = {0};
-	//
-	// extract_parameter(args, tmp, 20);
-	// pcParameter.bedTemp = atoi(tmp);
-	// printf("%-20s set bed temp to %d deg.\r\n", "[pc.c]", pcParameter.bedTemp);
 }
 
 void EmergencyStopHandler(const char *args, ResStruct_t *_resStruct) {

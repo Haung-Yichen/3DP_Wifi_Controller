@@ -166,6 +166,7 @@ static void _cbDialog(WM_MESSAGE *pMsg) {
                             memset(cmdBuf, 0, sizeof(cmdBuf));
                             snprintf(cmdBuf, sizeof(cmdBuf), "%s<%d>", CMD_Set_Nozzle_Temp, nozzle_temp);
                             xQueueSend(xCmdQueue, cmdBuf, 0);
+                            UI_Update_NozzleTemp(nozzle_temp);
 						// USER END
 							break;
 							// USER START (Optionally insert additional code for further notification handling)
