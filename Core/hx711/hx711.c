@@ -33,9 +33,15 @@ void Hx711_Init(hx711_t *hx711) {
     Hx711_SetOffset(hx711, 0.0f);
 
     printf("%-20s Auto-taring on initialization...\r\n", "[hx711.c]");
-    osDelay(500); // Wait for stabilization
-    Hx711_Tare(hx711, 10);
-    printf("%-20s Initialization complete. Offset: %ld\r\n", "[hx711.c]", (long)hx711->Offset);
+    
+    // Check if HX711 is connected before attempting tare
+    osDelay(100); // Brief wait for stabilization
+    if (Hx711_IsReady(hx711)) {
+        Hx711_Tare(hx711, 5); // Reduced times for faster init
+        printf("%-20s Initialization complete. Offset: %ld\r\n", "[hx711.c]", (long)hx711->Offset);
+    } else {
+        printf("%-20s HX711 not detected, skipping tare\r\n", "[hx711.c]");
+    }
 }
 
 void Hx711_MspInit(hx711_t *hx711, GPIO_TypeDef *SCK_GPIOx, uint16_t SCK_GPIO_Pin, GPIO_TypeDef *DT_GPIOx, uint16_t DT_GPIO_Pin) {
@@ -99,8 +105,18 @@ bool Hx711_IsReady(hx711_t *hx711) {
 }
 
 long Hx711_Read(hx711_t *hx711) {
+    // Check if HX711 is connected by testing if DT line is responsive
+    // If DT is stuck high for too long, assume device is disconnected
+    uint16_t timeout_counter = 0;
+    const uint16_t TIMEOUT_MS = 100;
+    
     while (!Hx711_IsReady(hx711)) {
         osDelay(1);
+        timeout_counter++;
+        if (timeout_counter >= TIMEOUT_MS) {
+            // Device not responding, return a special error value
+            return 0x7FFFFFFF; // Max positive value to indicate error
+        }
     }
 
     unsigned long value = 0;
@@ -133,11 +149,26 @@ long Hx711_Read(hx711_t *hx711) {
 
 static long Hx711_ReadAverage(hx711_t *hx711, uint8_t times) {
     long sum = 0;
+    uint8_t valid_reads = 0;
+    
     for (uint8_t i = 0; i < times; i++) {
-        sum += Hx711_Read(hx711);
+        long reading = Hx711_Read(hx711);
+        
+        // Check if device returned error value
+        if (reading == 0x7FFFFFFF) {
+            return 0x7FFFFFFF; // Propagate error
+        }
+        
+        sum += reading;
+        valid_reads++;
         osDelay(5);
     }
-    return sum / times;
+    
+    if (valid_reads == 0) {
+        return 0x7FFFFFFF; // No valid reads
+    }
+    
+    return sum / valid_reads;
 }
 
 long Hx711_GetValue(hx711_t *hx711, uint8_t times) {
@@ -147,6 +178,14 @@ long Hx711_GetValue(hx711_t *hx711, uint8_t times) {
 void Hx711_Tare(hx711_t *hx711, uint8_t times) {
     printf("%-20s Tare start...\r\n", "[hx711.c]");
     long sum = Hx711_ReadAverage(hx711, times);
+    
+    // Check if device is disconnected
+    if (sum == 0x7FFFFFFF) {
+        printf("%-20s Tare failed: HX711 not responding\r\n", "[hx711.c]");
+        Hx711_SetOffset(hx711, 0.0f);
+        return;
+    }
+    
     Hx711_SetOffset(hx711, (float)sum);
     printf("%-20s Tare done. Offset: %ld\r\n", "[hx711.c]", (long)hx711->Offset);
 }
@@ -156,6 +195,12 @@ float Hx711_GetWeight(hx711_t *hx711, uint8_t times) {
         return 0.0f; // Avoid division by zero
     }
     long raw_value = Hx711_GetValue(hx711, times);
+    
+    // Check if device returned error value (timeout/disconnected)
+    if (raw_value == 0x7FFFFFFF) {
+        return 0.0f; // Return 0 when device is not connected
+    }
+    
     return (float)(raw_value - hx711->Offset) / hx711->Scale;
 }
 

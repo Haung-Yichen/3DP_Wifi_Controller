@@ -13,6 +13,7 @@
 #define INC_HX711_H_
 
 #include "stm32f1xx_hal.h"
+#include <stdbool.h>
 
 #define CHANNEL_A 1
 #define CHANNEL_B 2
@@ -98,6 +99,13 @@ long Hx711_Read(hx711_t *hx711);
  * @return The averaged raw value.
  */
 long Hx711_GetValue(hx711_t *hx711, uint8_t times);
+
+/**
+ * @brief Checks if the HX711 is ready for reading.
+ * @param hx711 Pointer to the hx711_t structure.
+ * @return true if ready, false otherwise.
+ */
+bool Hx711_IsReady(hx711_t *hx711);
 
 /**
  * @brief Manual calibration function (for debugging).
