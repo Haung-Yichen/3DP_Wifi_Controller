@@ -5,6 +5,12 @@
 #include "Fatfs_SDIO.h"
 #include "hx711.h"
 #include "fileTask.h"
+#include "cmdList.h"
+#include "ui_updater.h"
+
+// External page handles are now used in ui_updater.c
+// extern WM_HWIN hPage1;
+// extern WM_HWIN hPage3;
 
 
 osThreadId_t pcTaskHandle = NULL;
@@ -21,11 +27,13 @@ static void PC_ParseRemainingTime(FIL *file);
 
 void PC_init(void) {
 	PC_RegCallback();
-	pcParameter.nozzleTemp = 0;
+	pcParameter.nozzleTemp = 30;
 	pcParameter.bedTemp = 0;
 	pcParameter.filamentWeight = 0;
 	pcParameter.progress = 0;
-	pcParameter.remainingTime = 0;
+	pcParameter.remainingTime.hours = 0;
+	pcParameter.remainingTime.minutes = 0;
+	pcParameter.remainingTime.seconds = 0;
 }
 
 void PC_RegCallback(void) {
@@ -192,11 +200,20 @@ void GoHomeHandler(const char *args, ResStruct_t *_resStruct) {
 }
 
 void GetRemainingTimeHandler(const char *args, ResStruct_t *_resStruct) {
-	sprintf(_resStruct->resBuf, "RemainingTime:%d\n", pcParameter.remainingTime);
+	int total_seconds = pcParameter.remainingTime.hours * 3600 + 
+	                    pcParameter.remainingTime.minutes * 60 + 
+	                    pcParameter.remainingTime.seconds;
+	sprintf(_resStruct->resBuf, "RemainingTime:%d\n", total_seconds);
+	
+	// Update UI
+	UI_Update_RemainingTime(pcParameter.remainingTime.hours,
+	                        pcParameter.remainingTime.minutes,
+	                        pcParameter.remainingTime.seconds);
 }
 
 void GetProgressHandler(const char *args, ResStruct_t *_resStruct) {
 	sprintf(_resStruct->resBuf, "Progress:%d\n", pcParameter.progress);
+	UI_Update_Progress(pcParameter.progress);
 }
 
 void GetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
@@ -205,10 +222,12 @@ void GetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
 
 	// HAL_UART_Receive(&PRINTING_USART_PORT, pc_RxBuf, sizeof(pc_RxBuf), pdMS_TO_TICKS(50));
 	sprintf(_resStruct->resBuf, "NozzleTemp:%d\n", pcParameter.nozzleTemp);
+	UI_Update_NozzleTemp(pcParameter.nozzleTemp);
 }
 
 void GetBedTempHandler(const char *args, ResStruct_t *_resStruct) {
 	sprintf(_resStruct->resBuf, "BedTemp:%s\n", "N/A");
+	UI_Update_BedTemp("N/A");
 }
 
 void GetFilamentWeightHandler(const char *args, ResStruct_t *_resStruct) {
@@ -219,6 +238,7 @@ void GetFilamentWeightHandler(const char *args, ResStruct_t *_resStruct) {
 	float weight_g = Hx711_GetWeight(&hx711, 3);
 	pcParameter.filamentWeight = (int)weight_g;
 	sprintf(_resStruct->resBuf, "FilamentWeight:%d\n", pcParameter.filamentWeight);
+	UI_Update_FilamentWeight(pcParameter.filamentWeight);
 }
 
 void SetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
@@ -266,13 +286,35 @@ static void PC_ParseRemainingTime(FIL *file) {
 	char *pos = strstr(gcode_line, search_string);
 
 	if (pos != NULL) {
-		// 將指標移動到搜尋字串之後，也就是數字 (或數字前的空格)
+		// 將指標移動到搜尋字串之後
 		pos += strlen(search_string);
 
-		// atoi() 會自動跳過空格並解析數字
-		pcParameter.remainingTime = atoi(pos);
+		// 解析時間格式，可能是 "HH:MM:SS" 或 "MM:SS" 或只有秒數
+		int hours = 0, minutes = 0, seconds = 0;
+		int parsed = sscanf(pos, "%d:%d:%d", &hours, &minutes, &seconds);
+		
+		if (parsed == 3) {
+			// Format: HH:MM:SS
+			pcParameter.remainingTime.hours = (uint8_t)hours;
+			pcParameter.remainingTime.minutes = (uint8_t)minutes;
+			pcParameter.remainingTime.seconds = (uint8_t)seconds;
+		} else if (parsed == 2) {
+			// Format: MM:SS (hours is actually minutes, minutes is seconds)
+			pcParameter.remainingTime.hours = 0;
+			pcParameter.remainingTime.minutes = (uint8_t)hours;
+			pcParameter.remainingTime.seconds = (uint8_t)minutes;
+		} else {
+			// Only seconds
+			int total_seconds = atoi(pos);
+			pcParameter.remainingTime.hours = total_seconds / 3600;
+			pcParameter.remainingTime.minutes = (total_seconds % 3600) / 60;
+			pcParameter.remainingTime.seconds = total_seconds % 60;
+		}
 
-		printf("%-20s remaining time: %d\r\n", "[printerController.c]", pcParameter.remainingTime);
+		printf("%-20s remaining time: %02d:%02d:%02d\r\n", "[printerController.c]", 
+		       pcParameter.remainingTime.hours, 
+		       pcParameter.remainingTime.minutes, 
+		       pcParameter.remainingTime.seconds);
 	} else {
 		printf("%-20s Did not find ';Print time: ' in G-code header\r\n", "[printerController.c]");
 	}

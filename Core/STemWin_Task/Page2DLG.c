@@ -19,6 +19,14 @@
 */
 
 // USER START (Optionally insert additional includes)
+#include <string.h>
+#include <stdio.h>
+#include "cmdHandler.h"
+#include "cmdList.h"
+#include "FreeRTOS.h"
+#include "queue.h"
+#include "esp32.h"
+
 // USER END
 
 #include "DIALOG.h"
@@ -57,22 +65,22 @@
 *       _aDialogCreate
 */
 static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
-  { WINDOW_CreateIndirect, "Page2", ID_WINDOW_0, 0, 0, 310, 194, 0, 0x0, 0 },
-  
-  // Nozzle Control
-  { TEXT_CreateIndirect, "Nozzle Temp (C)", ID_TEXT_NOZ, 10, 10, 120, 20, 0, 0x0, 0 },
-  { SPINBOX_CreateIndirect, "SpinNoz", ID_SPIN_NOZ, 10, 35, 100, 35, 0, 0x0, 0 },
-  { BUTTON_CreateIndirect, "SET", ID_BTN_SET_NOZ, 120, 35, 60, 35, 0, 0x0, 0 },
+	{WINDOW_CreateIndirect, "Page2", ID_WINDOW_0, 0, 0, 310, 194, 0, 0x0, 0},
 
-  // Bed Control
-  { TEXT_CreateIndirect, "Bed Temp (C)", ID_TEXT_BED, 10, 80, 120, 20, 0, 0x0, 0 },
-  { SPINBOX_CreateIndirect, "SpinBed", ID_SPIN_BED, 10, 105, 100, 35, 0, 0x0, 0 },
-  { BUTTON_CreateIndirect, "SET", ID_BTN_SET_BED, 120, 105, 60, 35, 0, 0x0, 0 },
+	// Nozzle Control
+	{TEXT_CreateIndirect, "Nozzle Temp (C)", ID_TEXT_NOZ, 10, 10, 120, 20, 0, 0x0, 0},
+	{SPINBOX_CreateIndirect, "SpinNoz", ID_SPIN_NOZ, 10, 35, 100, 35, 0, 0x0, 0},
+	{BUTTON_CreateIndirect, "SET", ID_BTN_SET_NOZ, 120, 35, 60, 35, 0, 0x0, 0},
 
-  // Movement
-  { BUTTON_CreateIndirect, "GO HOME", ID_BTN_HOME, 200, 35, 90, 105, 0, 0x0, 0 },
-  // USER START (Optionally insert additional widgets)
-  // USER END
+	// Bed Control
+	{TEXT_CreateIndirect, "Bed Temp (C)", ID_TEXT_BED, 10, 80, 120, 20, 0, 0x0, 0},
+	{SPINBOX_CreateIndirect, "SpinBed", ID_SPIN_BED, 10, 105, 100, 35, 0, 0x0, 0},
+	{BUTTON_CreateIndirect, "SET", ID_BTN_SET_BED, 120, 105, 60, 35, 0, 0x0, 0},
+
+	// Movement
+	{BUTTON_CreateIndirect, "GO HOME", ID_BTN_HOME, 200, 35, 90, 105, 0, 0x0, 0},
+	// USER START (Optionally insert additional widgets)
+	// USER END
 };
 
 /*********************************************************************
@@ -89,127 +97,168 @@ static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
 *
 *       _cbDialog
 */
-static void _cbDialog(WM_MESSAGE * pMsg) {
-  int NCode;
-  int Id;
-  WM_HWIN hItem;
-  // USER START (Optionally insert additional variables)
-  // USER END
+static void _cbDialog(WM_MESSAGE *pMsg) {
+	int NCode;
+	int Id;
+	WM_HWIN hItem;
+	// USER START (Optionally insert additional variables)
+    char cmdBuf[100];
+    static int nozzle_temp = 0;
+	// USER END
 
-  switch (pMsg->MsgId) {
-  case WM_INIT_DIALOG:
-    hItem = pMsg->hWin;
-    WINDOW_SetBkColor(hItem, GUI_BLACK);
+	switch (pMsg->MsgId) {
+		case WM_INIT_DIALOG:
+			hItem = pMsg->hWin;
+			WINDOW_SetBkColor(hItem, GUI_DARKGRAY);
 
-    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_NOZ);
-    TEXT_SetTextColor(hItem, GUI_WHITE);
-    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_BED);
-    TEXT_SetTextColor(hItem, GUI_WHITE);
+			// Nozzle Label
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_NOZ);
+			TEXT_SetFont(hItem, GUI_FONT_16B_1);
+			TEXT_SetTextColor(hItem, GUI_LIGHTGRAY);
 
-    hItem = WM_GetDialogItem(pMsg->hWin, ID_BTN_HOME);
-    // BUTTON_SetBkColor(hItem, BUTTON_CI_UNPRESSED, GUI_BLUE);
-    // BUTTON_SetTextColor(hItem, BUTTON_CI_UNPRESSED, GUI_WHITE);
-    break;
-  case WM_NOTIFY_PARENT:
-    Id    = WM_GetId(pMsg->hWinSrc);
-    NCode = pMsg->Data.v;
-    switch(Id) {
-    case ID_BTN_SET_NOZ: // Notifications sent by 'SET Nozzle Temp'
-      switch(NCode) {
-      case WM_NOTIFICATION_CLICKED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_RELEASED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      // USER START (Optionally insert additional code for further notification handling)
-      // USER END
-      }
-      break;
-    case ID_BTN_SET_BED: // Notifications sent by 'SET Bed Temp'
-      switch(NCode) {
-      case WM_NOTIFICATION_CLICKED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_RELEASED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      // USER START (Optionally insert additional code for further notification handling)
-      // USER END
-      }
-      break;
-    case ID_BTN_HOME: // Notifications sent by 'GO HOME'
-      switch(NCode) {
-      case WM_NOTIFICATION_CLICKED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_RELEASED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      // USER START (Optionally insert additional code for further notification handling)
-      // USER END
-      }
-      break;
-    case ID_SPIN_NOZ: // Notifications sent by 'SpinNoz'
-      switch(NCode) {
-      case WM_NOTIFICATION_CLICKED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_RELEASED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_MOVED_OUT:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_VALUE_CHANGED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      // USER START (Optionally insert additional code for further notification handling)
-      // USER END
-      }
-      break;
-    case ID_SPIN_BED: // Notifications sent by 'SpinBed'
-      switch(NCode) {
-      case WM_NOTIFICATION_CLICKED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_RELEASED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_MOVED_OUT:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_VALUE_CHANGED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      // USER START (Optionally insert additional code for further notification handling)
-      // USER END
-      }
-      break;
-    // USER START (Optionally insert additional code for further Ids)
-    // USER END
-    }
-    break;
-  // USER START (Optionally insert additional message handling)
-  // USER END
-  default:
-    WM_DefaultProc(pMsg);
-    break;
-  }
+			// Bed Label
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_BED);
+			TEXT_SetFont(hItem, GUI_FONT_16B_1);
+			TEXT_SetTextColor(hItem, GUI_LIGHTGRAY);
+
+			// Nozzle Spinbox
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_SPIN_NOZ);
+			SPINBOX_SetFont(hItem, GUI_FONT_16B_1);
+			SPINBOX_SetBkColor(hItem, SPINBOX_CI_ENABLED, GUI_WHITE);
+			SPINBOX_SetTextColor(hItem, SPINBOX_CI_ENABLED, GUI_BLACK);
+
+			// Bed Spinbox
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_SPIN_BED);
+			SPINBOX_SetFont(hItem, GUI_FONT_16B_1);
+			SPINBOX_SetBkColor(hItem, SPINBOX_CI_ENABLED, GUI_WHITE);
+			SPINBOX_SetTextColor(hItem, SPINBOX_CI_ENABLED, GUI_BLACK);
+
+			// Set Nozzle Button
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_BTN_SET_NOZ);
+			BUTTON_SetFont(hItem, GUI_FONT_16B_1);
+			BUTTON_SetBkColor(hItem, BUTTON_CI_UNPRESSED, GUI_DARKBLUE);
+			BUTTON_SetTextColor(hItem, BUTTON_CI_UNPRESSED, GUI_BLACK);
+
+			// Set Bed Button
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_BTN_SET_BED);
+			BUTTON_SetFont(hItem, GUI_FONT_16B_1);
+			BUTTON_SetBkColor(hItem, BUTTON_CI_UNPRESSED, GUI_DARKBLUE);
+			BUTTON_SetTextColor(hItem, BUTTON_CI_UNPRESSED, GUI_BLACK);
+
+			// Go Home Button
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_BTN_HOME);
+			BUTTON_SetFont(hItem, GUI_FONT_20B_1);
+			BUTTON_SetBkColor(hItem, BUTTON_CI_UNPRESSED, GUI_DARKBLUE);
+			BUTTON_SetTextColor(hItem, BUTTON_CI_UNPRESSED, GUI_BLACK);
+			break;
+		case WM_NOTIFY_PARENT:
+			Id = WM_GetId(pMsg->hWinSrc);
+			NCode = pMsg->Data.v;
+			switch (Id) {
+				case ID_BTN_SET_NOZ: // Notifications sent by 'SET Nozzle Temp'
+					switch (NCode) {
+						case WM_NOTIFICATION_CLICKED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+					case WM_NOTIFICATION_RELEASED:
+						// USER START (Optionally insert code for reacting on notification message)
+                            memset(cmdBuf, 0, sizeof(cmdBuf));
+                            snprintf(cmdBuf, sizeof(cmdBuf), "%s<%d>", CMD_Set_Nozzle_Temp, nozzle_temp);
+                            xQueueSend(xCmdQueue, cmdBuf, 0);
+						// USER END
+							break;
+							// USER START (Optionally insert additional code for further notification handling)
+							// USER END
+					}
+					break;
+				case ID_BTN_SET_BED: // Notifications sent by 'SET Bed Temp'
+					switch (NCode) {
+						case WM_NOTIFICATION_CLICKED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+						case WM_NOTIFICATION_RELEASED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+							// USER START (Optionally insert additional code for further notification handling)
+							// USER END
+					}
+					break;
+				case ID_BTN_HOME: // Notifications sent by 'GO HOME'
+					switch (NCode) {
+						case WM_NOTIFICATION_CLICKED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+					case WM_NOTIFICATION_RELEASED:
+						// USER START (Optionally insert code for reacting on notification message)
+                            memset(cmdBuf, 0, sizeof(cmdBuf));
+                            snprintf(cmdBuf, sizeof(cmdBuf), "%s", CMD_Go_Home);
+                            xQueueSend(xCmdQueue, cmdBuf, 0);
+						// USER END
+						break;
+						// USER START (Optionally insert additional code for further notification handling)
+							// USER END
+					}
+					break;
+				case ID_SPIN_NOZ: // Notifications sent by 'SpinNoz'
+					switch (NCode) {
+						case WM_NOTIFICATION_CLICKED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+						case WM_NOTIFICATION_RELEASED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+						case WM_NOTIFICATION_MOVED_OUT:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+						case WM_NOTIFICATION_VALUE_CHANGED:
+							// USER START (Optionally insert code for reacting on notification message)
+                            hItem = WM_GetDialogItem(pMsg->hWin, ID_SPIN_NOZ);
+                            nozzle_temp = SPINBOX_GetValue(hItem);
+							// USER END
+							break;
+							// USER START (Optionally insert additional code for further notification handling)
+							// USER END
+					}
+					break;
+				case ID_SPIN_BED: // Notifications sent by 'SpinBed'
+					switch (NCode) {
+						case WM_NOTIFICATION_CLICKED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+						case WM_NOTIFICATION_RELEASED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+						case WM_NOTIFICATION_MOVED_OUT:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+						case WM_NOTIFICATION_VALUE_CHANGED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+							// USER START (Optionally insert additional code for further notification handling)
+							// USER END
+					}
+					break;
+					// USER START (Optionally insert additional code for further Ids)
+					// USER END
+			}
+			break;
+		// USER START (Optionally insert additional message handling)
+		// USER END
+		default:
+			WM_DefaultProc(pMsg);
+			break;
+	}
 }
 
 /*********************************************************************
@@ -223,11 +272,12 @@ static void _cbDialog(WM_MESSAGE * pMsg) {
 *       CreatePage2
 */
 WM_HWIN CreatePage2(WM_HWIN hParent);
-WM_HWIN CreatePage2(WM_HWIN hParent) {
-  WM_HWIN hWin;
 
-  hWin = GUI_CreateDialogBox(_aDialogCreate, GUI_COUNTOF(_aDialogCreate), _cbDialog, hParent, 0, 0);
-  return hWin;
+WM_HWIN CreatePage2(WM_HWIN hParent) {
+	WM_HWIN hWin;
+
+	hWin = GUI_CreateDialogBox(_aDialogCreate, GUI_COUNTOF(_aDialogCreate), _cbDialog, hParent, 0, 0);
+	return hWin;
 }
 
 // USER START (Optionally insert additional public code)

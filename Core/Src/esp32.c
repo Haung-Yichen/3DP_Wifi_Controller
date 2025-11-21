@@ -17,7 +17,7 @@ QueueHandle_t xCmdQueue = NULL;
 StaticQueue_t cmdQueue_s;
 uint8_t cmdQueueArea[10 * CMD_BUF_SIZE];
 static ESP32_STATE_TypeDef currentState = ESP32_INIT;
-char ip[15];
+char ip[15] = {0}; // Initialize to empty string
 
 void ESP32_Init(void) {
 	Uart_Rx_Pool_Init();
@@ -80,10 +80,12 @@ void WifiStatusHandler(const char *args, ResStruct_t *_resStruct) {
 
 	extract_parameter(args, wifiStatus, 20);
 	if (wifiStatus[0] == '1') {
-		strncpy(ip, wifiStatus + 1, 20);
+		strncpy(ip, wifiStatus + 1, 15);
+		ip[14] = '\0'; // Ensure null termination
 		printf("%-20s Wifi connected @ %s\r\n", "[esp32.c]", ip);
 		ESP32_SetState(ESP32_IDLE);
 	} else {
+		memset(ip, 0, sizeof(ip)); // Clear IP on disconnect
 		printf("%-20s Wifi disconnected\r\n", "[esp32.c]");
 		ESP32_SetState(ESP32_INIT);
 	}

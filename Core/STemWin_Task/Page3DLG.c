@@ -19,6 +19,14 @@
 */
 
 // USER START (Optionally insert additional includes)
+#include <string.h>
+#include <stdio.h>
+#include "cmdHandler.h"
+#include "cmdList.h"
+#include "FreeRTOS.h"
+#include "queue.h"
+
+extern QueueHandle_t xCmdQueue;
 // USER END
 
 #include "DIALOG.h"
@@ -29,12 +37,13 @@
 *
 **********************************************************************
 */
-#define ID_WINDOW_0      (GUI_ID_USER + 0x00)
-#define ID_TEXT_FIL      (GUI_ID_USER + 0x01)
-#define ID_TEXT_WEIGHT   (GUI_ID_USER + 0x02)
-#define ID_BTN_START     (GUI_ID_USER + 0x03)
-#define ID_BTN_PAUSE     (GUI_ID_USER + 0x04)
-#define ID_BTN_STOP      (GUI_ID_USER + 0x05)
+#define ID_WINDOW_0        (GUI_ID_USER + 0x00)
+#define ID_TEXT_WEIGHT_PANEL (GUI_ID_USER + 0x01)
+#define ID_TEXT_FIL        (GUI_ID_USER + 0x02)
+#define ID_TEXT_WEIGHT     (GUI_ID_USER + 0x03)
+#define ID_BTN_START       (GUI_ID_USER + 0x04)
+#define ID_BTN_PAUSE       (GUI_ID_USER + 0x05)
+#define ID_BTN_STOP        (GUI_ID_USER + 0x06)
 
 
 // USER START (Optionally insert additional defines)
@@ -55,18 +64,20 @@
 *       _aDialogCreate
 */
 static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
-  { WINDOW_CreateIndirect, "Page3", ID_WINDOW_0, 0, 0, 310, 194, 0, 0x0, 0 },
-  
-  // Filament Info
-  { TEXT_CreateIndirect, "Filament Weight:", ID_TEXT_FIL, 10, 10, 150, 20, 0, 0x0, 0 },
-  { TEXT_CreateIndirect, "0 g", ID_TEXT_WEIGHT, 160, 10, 100, 20, 0, 0x0, 0 },
+	{WINDOW_CreateIndirect, "Page3", ID_WINDOW_0, 0, 0, 310, 188, 0, 0x0, 0},
 
-  // Control Buttons
-  { BUTTON_CreateIndirect, "START PRINT", ID_BTN_START, 10, 40, 290, 40, 0, 0x0, 0 },
-  { BUTTON_CreateIndirect, "PAUSE PRINT", ID_BTN_PAUSE, 10, 90, 140, 40, 0, 0x0, 0 },
-  { BUTTON_CreateIndirect, "STOP PRINT", ID_BTN_STOP, 160, 90, 140, 40, 0, 0x0, 0 },
-  // USER START (Optionally insert additional widgets)
-  // USER END
+	// Weight Panel (Background)
+	{TEXT_CreateIndirect, "", ID_TEXT_WEIGHT_PANEL, 10, 10, 290, 70, 0, 0x0, 0},
+	// Weight Content
+	{TEXT_CreateIndirect, "Filament Weight", ID_TEXT_FIL, 10, 20, 290, 20, TEXT_CF_HCENTER, 0x0, 0},
+	{TEXT_CreateIndirect, "0 g", ID_TEXT_WEIGHT, 10, 45, 290, 30, TEXT_CF_HCENTER, 0x0, 0},
+
+	// Control Buttons
+	{BUTTON_CreateIndirect, "START PRINT", ID_BTN_START, 10, 90, 290, 30, 0, 0x0, 0},
+	{BUTTON_CreateIndirect, "PAUSE PRINT", ID_BTN_PAUSE, 10, 130, 140, 30, 0, 0x0, 0},
+	{BUTTON_CreateIndirect, "STOP PRINT", ID_BTN_STOP, 160, 130, 140, 30, 0, 0x0, 0},
+	// USER START (Optionally insert additional widgets)
+	// USER END
 };
 
 /*********************************************************************
@@ -83,80 +94,118 @@ static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
 *
 *       _cbDialog
 */
-static void _cbDialog(WM_MESSAGE * pMsg) {
-  int NCode;
-  int Id;
-  WM_HWIN hItem;
-  // USER START (Optionally insert additional variables)
-  // USER END
+static void _cbDialog(WM_MESSAGE *pMsg) {
+	int NCode;
+	int Id;
+	WM_HWIN hItem;
+	// USER START (Optionally insert additional variables)
+    char cmdBuf[100];
+	// USER END
 
-  switch (pMsg->MsgId) {
-  case WM_INIT_DIALOG:
-    hItem = pMsg->hWin;
-    WINDOW_SetBkColor(hItem, GUI_BLACK);
+	switch (pMsg->MsgId) {
+		case WM_INIT_DIALOG:
+			hItem = pMsg->hWin;
+			WINDOW_SetBkColor(hItem, GUI_DARKGRAY);
 
-    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_FIL);
-    TEXT_SetTextColor(hItem, GUI_LIGHTGRAY);
-    hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_WEIGHT);
-    TEXT_SetTextColor(hItem, GUI_WHITE);
-    TEXT_SetFont(hItem, GUI_FONT_20B_1);
-    break;
-  case WM_NOTIFY_PARENT:
-    Id    = WM_GetId(pMsg->hWinSrc);
-    NCode = pMsg->Data.v;
-    switch(Id) {
-    case ID_BTN_START: // Notifications sent by 'START PRINT'
-      switch(NCode) {
-      case WM_NOTIFICATION_CLICKED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_RELEASED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      // USER START (Optionally insert additional code for further notification handling)
-      // USER END
-      }
-      break;
-    case ID_BTN_PAUSE: // Notifications sent by 'PAUSE PRINT'
-      switch(NCode) {
-      case WM_NOTIFICATION_CLICKED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_RELEASED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      // USER START (Optionally insert additional code for further notification handling)
-      // USER END
-      }
-      break;
-    case ID_BTN_STOP: // Notifications sent by 'STOP PRINT'
-      switch(NCode) {
-      case WM_NOTIFICATION_CLICKED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      case WM_NOTIFICATION_RELEASED:
-        // USER START (Optionally insert code for reacting on notification message)
-        // USER END
-        break;
-      // USER START (Optionally insert additional code for further notification handling)
-      // USER END
-      }
-      break;
-    // USER START (Optionally insert additional code for further Ids)
-    // USER END
-    }
-    break;
-  // USER START (Optionally insert additional message handling)
-  // USER END
-  default:
-    WM_DefaultProc(pMsg);
-    break;
-  }
+			// Weight Panel
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_WEIGHT_PANEL);
+			TEXT_SetBkColor(hItem, GUI_BLACK);
+
+			// Filament Label
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_FIL);
+			TEXT_SetFont(hItem, GUI_FONT_16B_1);
+			TEXT_SetTextColor(hItem, GUI_LIGHTGRAY);
+			TEXT_SetBkColor(hItem, GUI_TRANSPARENT);
+
+			// Weight Value (Green)
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_WEIGHT);
+			TEXT_SetTextColor(hItem, GUI_GREEN);
+			TEXT_SetFont(hItem, GUI_FONT_24B_1);
+			TEXT_SetBkColor(hItem, GUI_TRANSPARENT);
+
+			// Start Button (Green)
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_BTN_START);
+			BUTTON_SetFont(hItem, GUI_FONT_20B_1);
+			BUTTON_SetBkColor(hItem, BUTTON_CI_UNPRESSED, GUI_DARKGREEN);
+			BUTTON_SetTextColor(hItem, BUTTON_CI_UNPRESSED, GUI_BLACK);
+
+			// Pause Button (Orange)
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_BTN_PAUSE);
+			BUTTON_SetFont(hItem, GUI_FONT_16B_1);
+			BUTTON_SetBkColor(hItem, BUTTON_CI_UNPRESSED, GUI_ORANGE);
+			BUTTON_SetTextColor(hItem, BUTTON_CI_UNPRESSED, GUI_BLACK);
+
+			// Stop Button (Red)
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_BTN_STOP);
+			BUTTON_SetFont(hItem, GUI_FONT_16B_1);
+			BUTTON_SetBkColor(hItem, BUTTON_CI_UNPRESSED, GUI_RED);
+			BUTTON_SetTextColor(hItem, BUTTON_CI_UNPRESSED, GUI_BLACK);
+			break;
+		case WM_NOTIFY_PARENT:
+			Id = WM_GetId(pMsg->hWinSrc);
+			NCode = pMsg->Data.v;
+			switch (Id) {
+				case ID_BTN_START: // Notifications sent by 'START PRINT'
+					switch (NCode) {
+						case WM_NOTIFICATION_CLICKED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+					case WM_NOTIFICATION_RELEASED:
+						// USER START (Optionally insert code for reacting on notification message)
+                            memset(cmdBuf, 0, sizeof(cmdBuf));
+                            snprintf(cmdBuf, sizeof(cmdBuf), "%s", CMD_Start_To_Print);
+                            xQueueSend(xCmdQueue, cmdBuf, 0);
+						// USER END
+							break;
+							// USER START (Optionally insert additional code for further notification handling)
+							// USER END
+					}
+					break;
+				case ID_BTN_PAUSE: // Notifications sent by 'PAUSE PRINT'
+					switch (NCode) {
+						case WM_NOTIFICATION_CLICKED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+					case WM_NOTIFICATION_RELEASED:
+						// USER START (Optionally insert code for reacting on notification message)
+                            memset(cmdBuf, 0, sizeof(cmdBuf));
+                            snprintf(cmdBuf, sizeof(cmdBuf), "%s", CMD_Pause_Printing);
+                            xQueueSend(xCmdQueue, cmdBuf, 0);
+						// USER END
+						break;
+						// USER START (Optionally insert additional code for further notification handling)
+						// USER END
+				}
+				break;
+			case ID_BTN_STOP: // Notifications sent by 'STOP PRINT'
+				switch (NCode) {
+						case WM_NOTIFICATION_CLICKED:
+							// USER START (Optionally insert code for reacting on notification message)
+							// USER END
+							break;
+					case WM_NOTIFICATION_RELEASED:
+						// USER START (Optionally insert code for reacting on notification message)
+                            memset(cmdBuf, 0, sizeof(cmdBuf));
+                            snprintf(cmdBuf, sizeof(cmdBuf), "%s", CMD_Stop_printing);
+                            xQueueSend(xCmdQueue, cmdBuf, 0);
+						// USER END
+							break;
+							// USER START (Optionally insert additional code for further notification handling)
+							// USER END
+					}
+					break;
+					// USER START (Optionally insert additional code for further Ids)
+					// USER END
+			}
+			break;
+		// USER START (Optionally insert additional message handling)
+		// USER END
+		default:
+			WM_DefaultProc(pMsg);
+			break;
+	}
 }
 
 /*********************************************************************
@@ -170,11 +219,12 @@ static void _cbDialog(WM_MESSAGE * pMsg) {
 *       CreatePage3
 */
 WM_HWIN CreatePage3(WM_HWIN hParent);
-WM_HWIN CreatePage3(WM_HWIN hParent) {
-  WM_HWIN hWin;
 
-  hWin = GUI_CreateDialogBox(_aDialogCreate, GUI_COUNTOF(_aDialogCreate), _cbDialog, hParent, 0, 0);
-  return hWin;
+WM_HWIN CreatePage3(WM_HWIN hParent) {
+	WM_HWIN hWin;
+
+	hWin = GUI_CreateDialogBox(_aDialogCreate, GUI_COUNTOF(_aDialogCreate), _cbDialog, hParent, 0, 0);
+	return hWin;
 }
 
 // USER START (Optionally insert additional public code)

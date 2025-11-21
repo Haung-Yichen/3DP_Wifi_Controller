@@ -39,6 +39,8 @@
 #define SD_DMAx_Tx_IRQHandler             DMA2_Channel4_5_IRQHandler
 #define SD_DMAx_Rx_IRQHandler             DMA2_Channel4_5_IRQHandler
 
+/* Exported SD handle */
+extern SD_HandleTypeDef uSdHandle;
 
 /* Exported functions --------------------------------------------------------*/
 uint8_t BSP_SD_Init(void);

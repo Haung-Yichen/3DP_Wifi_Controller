@@ -231,10 +231,9 @@ void USART2_IRQHandler(void) {
 
 	if (__HAL_UART_GET_FLAG(&ESP32_USART_PORT, UART_FLAG_IDLE)) {
 		__HAL_UART_CLEAR_IDLEFLAG(&ESP32_USART_PORT);
-		// HAL_UART_DMAStop(&ESP32_USART_PORT); // 錯誤：這會同時停止 TX DMA，導致死鎖
-		HAL_UART_AbortReceive(&ESP32_USART_PORT); // 改用只停止 RX DMA
-
+		HAL_UART_AbortReceive(&ESP32_USART_PORT);
 		pCurrentRxBuf->len = UART_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(ESP32_USART_PORT.hdmarx);
+
 		if (pCurrentRxBuf->len) {
 			//判斷數據是不是命令
 			if (pCurrentRxBuf->data[0] == 'c') {
@@ -246,9 +245,6 @@ void USART2_IRQHandler(void) {
 				uartRxBuf_TypeDef *pNewBuf = NULL;
 				if (xQueueReceiveFromISR(xFreeBufferQueue, &pNewBuf, &xHigherPriorityTaskWoken) == pdTRUE) {
 					pCurrentRxBuf = pNewBuf;
-				} else {
-					// 無可用緩衝區，重複使用當前緩衝區 (可能會導致數據損壞)
-					// 可以在這裡添加錯誤計數或標誌
 				}
 			}
 		}

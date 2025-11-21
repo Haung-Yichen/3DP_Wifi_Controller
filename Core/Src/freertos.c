@@ -25,9 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "ledTask.h"
 #include "esp32.h"
-#include "gpio.h"
 #include "UITask.h"
 #include "hx711.h"
 #include "fileTask.h"

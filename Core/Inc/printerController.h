@@ -16,14 +16,12 @@ extern "C" {
 #endif
 
 #include <string.h>
-#include <stdio.h>
 #include <stdint.h>
 #include "FreeRTOS.h"
 #include "semphr.h"
 #include "cmdHandler.h"
-#include "cmdList.h"
 #include "cmsis_os2.h"
-#include "ff.h"
+
 
 extern SemaphoreHandle_t priOverSemaphore; //列印完成信號量
 extern osThreadId_t pcTaskHandle;
@@ -31,10 +29,16 @@ extern const osThreadAttr_t pcTask_attributes;
 
 /*-----存放印表機各項參數-----*/
 typedef struct {
+	uint8_t hours;
+	uint8_t minutes;
+	uint8_t seconds;
+} TimeStruct_t;
+
+typedef struct {
 	uint8_t nozzleTemp;
 	uint8_t bedTemp;
 	uint16_t filamentWeight;
-	uint16_t remainingTime;
+	TimeStruct_t remainingTime;
 	uint8_t progress;
 } PC_Parameter_TypeDef;
 
