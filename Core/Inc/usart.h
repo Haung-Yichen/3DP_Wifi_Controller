@@ -42,8 +42,8 @@ extern DMA_HandleTypeDef hdma_usart3_rx;
 #define DEBUG_USART_BPS             1000000
 #define ESP32_USART_BPS             1000000
 #define PRINTER_USART_BPS           250000
-#define UART_RX_BUFFER_SIZE			2048
-#define RX_BUFFER_POOL_SIZE         7
+#define UART_RX_BUFFER_SIZE			4096
+#define RX_BUFFER_POOL_SIZE         3
 
 
 void MX_USART1_UART_Init(void);
@@ -61,6 +61,7 @@ typedef struct {
 // extern uartRxBuf_TypeDef uartRxBuf;
 extern uartRxBuf_TypeDef *pCurrentRxBuf;
 extern QueueHandle_t xFreeBufferQueue;
+extern volatile bool uartRxPaused;
 
 /**
  * @brief (公共 API) 執行緒安全的非阻塞(Non-Blocking) DMA 傳輸字串
@@ -77,6 +78,11 @@ void Uart_Sync_Init(void);
  * @brief 初始化接收緩衝區池
  */
 void Uart_Rx_Pool_Init(void);
+
+/**
+ * @brief 恢復 UART 接收 (當有空閒緩衝區時調用)
+ */
+void UART_Resume_Reception(void);
 
 /* USER CODE END Prototypes */
 

@@ -30,6 +30,7 @@ static UartSync_t gUartSync[UART_COUNT];
 uartRxBuf_TypeDef rxBufPool[RX_BUFFER_POOL_SIZE];
 uartRxBuf_TypeDef *pCurrentRxBuf;
 QueueHandle_t xFreeBufferQueue;
+volatile bool uartRxPaused = false;
 
 // 核心 DMA 傳輸函式 (內部使用)
 static HAL_StatusTypeDef _UART_SendBuffer_DMA(UART_HandleTypeDef *huart, const uint8_t *data, size_t len);
@@ -119,7 +120,7 @@ void MX_USART2_UART_Init(void) {
 	huart2.Init.StopBits = UART_STOPBITS_1;
 	huart2.Init.Parity = UART_PARITY_NONE;
 	huart2.Init.Mode = UART_MODE_TX_RX;
-	huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart2.Init.HwFlowCtl = UART_HWCONTROL_RTS;
 	huart2.Init.OverSampling = UART_OVERSAMPLING_16;
 	if (HAL_UART_Init(&huart2) != HAL_OK) {
 		Error_Handler();
@@ -207,9 +208,15 @@ void HAL_UART_MspInit(UART_HandleTypeDef *uartHandle) {
 		__HAL_RCC_USART2_CLK_ENABLE();
 		__HAL_RCC_GPIOA_CLK_ENABLE();
 		/**USART2 GPIO Configuration
+		PA1     ------> USART2_RTS
 		PA2     ------> USART2_TX
 		PA3     ------> USART2_RX
 		*/
+		GPIO_InitStruct.Pin = GPIO_PIN_1;
+		GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+		GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+		HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
 		GPIO_InitStruct.Pin = GPIO_PIN_2;
 		GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
 		GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
@@ -333,7 +340,7 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef *uartHandle) {
 
 		/* USER CODE END USART2_MspDeInit 0 */
 		__HAL_RCC_USART2_CLK_DISABLE();
-		HAL_GPIO_DeInit(GPIOA, GPIO_PIN_2 | GPIO_PIN_3);
+		HAL_GPIO_DeInit(GPIOA, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);
 		HAL_DMA_DeInit(uartHandle->hdmatx);
 		HAL_DMA_DeInit(uartHandle->hdmarx);
 		HAL_NVIC_DisableIRQ(USART2_IRQn);
@@ -460,12 +467,36 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 		__HAL_UART_CLEAR_FEFLAG(huart);
 		__HAL_UART_CLEAR_PEFLAG(huart);
 
-		// 重新啟動 DMA 接收
-		HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
+		// 重新啟動 DMA 接收 (僅當未暫停時)
+		if (!uartRxPaused) {
+			HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
+		}
 		
 		// 可以選擇打印錯誤日誌，但在中斷中要小心
 		// printf("%-20s UART Error Recovered (Code: 0x%x)\r\n", "[usart.c]", huart->ErrorCode);
 	}
+}
+
+/**
+ * @brief 恢復 UART 接收 (當有空閒緩衝區時調用)
+ */
+void UART_Resume_Reception(void) {
+	uartRxBuf_TypeDef *pNewBuf = NULL;
+	
+	// 進入臨界區保護，避免與 ISR 衝突
+	taskENTER_CRITICAL();
+	
+	if (uartRxPaused) {
+		if (xQueueReceive(xFreeBufferQueue, &pNewBuf, 0) == pdTRUE) {
+			pCurrentRxBuf = pNewBuf;
+			memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
+			HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
+			uartRxPaused = false;
+			// printf("UART Resumed\r\n");
+		}
+	}
+	
+	taskEXIT_CRITICAL();
 }
 
 /* USER CODE END 1 */

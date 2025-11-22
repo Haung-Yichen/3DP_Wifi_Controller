@@ -22,6 +22,7 @@
 // USER END
 
 #include "DIALOG.h"
+#include "usart.h"
 
 /*********************************************************************
 *
@@ -34,6 +35,7 @@
 #define ID_TEXT_CAM_ST   (GUI_ID_USER + 0x02)
 #define ID_TEXT_SYS_1    (GUI_ID_USER + 0x03)
 #define ID_TEXT_SYS_2    (GUI_ID_USER + 0x04)
+#define ID_BTN_ESP32_BURN (GUI_ID_USER + 0x05)
 
 
 // USER START (Optionally insert additional defines)
@@ -63,6 +65,7 @@ static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
 	// System Info
 	{TEXT_CreateIndirect, "System Info:", ID_TEXT_SYS_1, 10, 70, 290, 20, 0, 0x0, 0},
 	{TEXT_CreateIndirect, "FW: v1.0.0", ID_TEXT_SYS_2, 10, 95, 290, 20, 0, 0x0, 0},
+	{BUTTON_CreateIndirect, "esp32 burn", ID_BTN_ESP32_BURN, 10, 120, 140, 40, 0, 0x0, 0},
 	// USER START (Optionally insert additional widgets)
 	// USER END
 };
@@ -113,6 +116,10 @@ static void _cbDialog(WM_MESSAGE *pMsg) {
 			hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_SYS_2);
 			TEXT_SetFont(hItem, GUI_FONT_16B_1);
 			TEXT_SetTextColor(hItem, GUI_WHITE);
+
+			// ESP32 Burn Button
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_BTN_ESP32_BURN);
+			BUTTON_SetFont(hItem, GUI_FONT_16B_1);
 			break;
 		case WM_NOTIFY_PARENT:
 			Id = WM_GetId(pMsg->hWinSrc);
@@ -130,6 +137,24 @@ static void _cbDialog(WM_MESSAGE *pMsg) {
 							break;
 							// USER START (Optionally insert additional code for further notification handling)
 							// USER END
+					}
+					break;
+				case ID_BTN_ESP32_BURN:
+					switch (NCode) {
+						case WM_NOTIFICATION_RELEASED:
+							{
+								static int uart2_disabled = 0;
+								if (uart2_disabled == 0) {
+									HAL_UART_MspDeInit(&ESP32_USART_PORT);
+									uart2_disabled = 1;
+									GUI_MessageBox("uart2 disabled", "Info", GUI_MESSAGEBOX_CF_MODAL);
+								} else {
+									HAL_UART_MspInit(&ESP32_USART_PORT);
+									uart2_disabled = 0;
+									GUI_MessageBox("uart2 enabled", "Info", GUI_MESSAGEBOX_CF_MODAL);
+								}
+							}
+							break;
 					}
 					break;
 					// USER START (Optionally insert additional code for further Ids)

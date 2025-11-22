@@ -39,11 +39,11 @@
 #include "GUI.h"
 #include "hx711.h"
 
-void setUART2HighZ();
 void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
 uint8_t ILI9341_Read_MADCTL(void);
 void Sanitize_SD_Bus(void);
+
 
 /**
   * @brief  主程式進入點
@@ -55,10 +55,10 @@ int main(void) {
 	SystemClock_Config();
 	MX_GPIO_Init();
 	MX_DMA_Init();
-	// setUART2HighZ();
 	MX_USART1_UART_Init();
 	MX_USART2_UART_Init();
 	MX_USART3_UART_Init();
+	// setUART2HighZ();
 	__HAL_RCC_CRC_CLK_ENABLE();
 	/*------------CUSTOMIZE FUNC INIT------------*/
 	LED_GPIO_Config();
@@ -122,24 +122,6 @@ void Sanitize_SD_Bus(void)
 	// 6. 釋放 GPIO，將引腳重置，讓後續的 HAL_SD_Init 接手配置為 Alternate Function
 	HAL_GPIO_DeInit(GPIOC, GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12);
 	HAL_GPIO_DeInit(GPIOD, GPIO_PIN_2);
-}
-
-void setUART2HighZ() {
-	GPIO_InitTypeDef GPIO_InitStruct = {0};
-	GPIO_InitStruct.Pin = GPIO_PIN_2;
-	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-	GPIO_InitStruct.Pin = GPIO_PIN_3;
-	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-	while (HAL_GPIO_ReadPin(USER_KEY_GPIO_PORT, USER_KEY_PIN) == GPIO_PIN_RESET) {
-	}
 }
 
 /**

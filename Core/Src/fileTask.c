@@ -154,10 +154,16 @@ static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx) {
 #endif
 			}
 			xQueueSend(xFreeBufferQueue, &pFileBuf, 0);
+			if (uartRxPaused) {
+				UART_Resume_Reception();
+			}
 			return RECV_OK;
 		} else {
 			// len == 0
 			xQueueSend(xFreeBufferQueue, &pFileBuf, 0);
+			if (uartRxPaused) {
+				UART_Resume_Reception();
+			}
 		}
 
 	/*========== 超時 (received_data == false) ==========*/

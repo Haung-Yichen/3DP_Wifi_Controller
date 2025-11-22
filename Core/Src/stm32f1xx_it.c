@@ -238,6 +238,9 @@ void USART2_IRQHandler(void) {
 			//判斷數據是不是命令
 			if (pCurrentRxBuf->data[0] == 'c') {
 				xQueueSendFromISR(xCmdQueue, &pCurrentRxBuf->data, &xHigherPriorityTaskWoken);
+				// Reuse buffer for commands
+				memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
+				HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
 			} else if (isTransmittimg) {
 				xQueueSendFromISR(xFileQueue, &pCurrentRxBuf, &xHigherPriorityTaskWoken);
 				
@@ -245,12 +248,23 @@ void USART2_IRQHandler(void) {
 				uartRxBuf_TypeDef *pNewBuf = NULL;
 				if (xQueueReceiveFromISR(xFreeBufferQueue, &pNewBuf, &xHigherPriorityTaskWoken) == pdTRUE) {
 					pCurrentRxBuf = pNewBuf;
+					memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
+					HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
+				} else {
+					// No free buffer, pause reception (RTS will go high when hardware FIFO/DR is full)
+					uartRxPaused = true;
 				}
+			} else {
+				// Not command, not transmitting (unexpected data), reuse buffer
+				memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
+				HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
 			}
+		} else {
+			// Length 0, restart reception
+			memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
+			HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
 		}
 		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-		memset(pCurrentRxBuf->data, 0, UART_RX_BUFFER_SIZE);
-		HAL_UART_Receive_DMA(&ESP32_USART_PORT, (uint8_t*)pCurrentRxBuf->data, sizeof(pCurrentRxBuf->data));
 	}
 	HAL_UART_IRQHandler(&ESP32_USART_PORT); // 讓 HAL 處理其他 UART 相關的中斷
 }
