@@ -259,22 +259,22 @@ void GetProgressHandler(const char *args, ResStruct_t *_resStruct) {
 }
 
 void GetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
+	UART_SendString_DMA(&PRINTING_USART_PORT, "M105\r\n");
+	memset(pc_RxBuf, 0, sizeof(pc_RxBuf));
+
+	// HAL_StatusTypeDef status = HAL_UART_Receive(
+	// 	&PRINTING_USART_PORT, pc_RxBuf, sizeof(pc_RxBuf), pdMS_TO_TICKS(1000));
+	// if (status == HAL_OK) {
+	// 	// 解析印表機回傳的溫度資料，格式如: "ok T:210.5 /210.0 B:60.2 /60.0"
+	// 	char *temp_pos = strstr((char*)pc_RxBuf, "T:");
+	// 	if (temp_pos != NULL) {
+	// 		float temp = 0.0f;
+	// 		if (sscanf(temp_pos + 2, "%f", &temp) == 1) {
+	// 			pcParameter.nozzleTemp = (uint8_t)temp;
+	// 		}
+	// 	}
+	// }
 	if (_resStruct != NULL) {
-		UART_SendString_DMA(&PRINTING_USART_PORT, "M105\r\n");
-		memset(pc_RxBuf, 0, sizeof(pc_RxBuf));
-		HAL_StatusTypeDef status = HAL_UART_Receive(&PRINTING_USART_PORT, pc_RxBuf, sizeof(pc_RxBuf), pdMS_TO_TICKS(1000));
-		
-		if (status == HAL_OK) {
-			// 解析印表機回傳的溫度資料，格式如: "ok T:210.5 /210.0 B:60.2 /60.0"
-			char *temp_pos = strstr((char*)pc_RxBuf, "T:");
-			if (temp_pos != NULL) {
-				float temp = 0.0f;
-				if (sscanf(temp_pos + 2, "%f", &temp) == 1) {
-					pcParameter.nozzleTemp = (uint8_t)temp;
-					printf("%-20s Parsed nozzle temp: %d C\r\n", "[printerController.c]", pcParameter.nozzleTemp);
-				}
-			}
-		}
 		sprintf(_resStruct->resBuf, "NozzleTemp:%d\n", pcParameter.nozzleTemp);
 	}
 	UI_Update_NozzleTemp(pcParameter.nozzleTemp);
