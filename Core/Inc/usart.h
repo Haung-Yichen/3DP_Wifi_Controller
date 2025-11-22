@@ -42,8 +42,8 @@ extern DMA_HandleTypeDef hdma_usart3_rx;
 #define DEBUG_USART_BPS             1000000
 #define ESP32_USART_BPS             1000000
 #define PRINTER_USART_BPS           250000
-#define UART_RX_BUFFER_SIZE			4096
-#define RX_BUFFER_POOL_SIZE         3
+#define UART_RX_BUFFER_SIZE			2048
+#define RX_BUFFER_POOL_SIZE         5
 
 
 void MX_USART1_UART_Init(void);
