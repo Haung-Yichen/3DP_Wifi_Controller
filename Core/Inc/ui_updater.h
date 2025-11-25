@@ -8,5 +8,6 @@ void UI_Update_BedTemp(const char* temp);
 void UI_Update_Progress(int progress);
 void UI_Update_RemainingTime(uint8_t hours, uint8_t minutes, uint8_t seconds);
 void UI_Update_FilamentWeight(int weight);
+void UI_Show_FileUploadSuccess(void);
 
 #endif //UI_UPDATER_H

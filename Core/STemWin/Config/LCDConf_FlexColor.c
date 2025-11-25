@@ -184,7 +184,7 @@ void LCD_X_Config(void) {
 	Config.FirstCOM = 0; //modify by fire
 	Config.FirstSEG = 0; //modify by fire
 	// Config.Orientation = GUI_SWAP_XY | GUI_MIRROR_X; //modify by fire 横屏
-	Config.Orientation = GUI_SWAP_XY | GUI_MIRROR_Y; //modify by fire 横屏
+	Config.Orientation = GUI_SWAP_XY | GUI_MIRROR_X; //modify by fire 横屏
 	Config.NumDummyReads = 2; //modify by fire 读取的第二个数据才是真实数据
 
 	GUIDRV_FlexColor_Config(pDevice, &Config);

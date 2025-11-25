@@ -1,5 +1,8 @@
 #include "ui_updater.h"
 #include "DIALOG.h"
+#include "GUI.h"
+#include "MESSAGEBOX.h"
+#include "cmsis_os2.h"
 #include <stdio.h>
 
 // External page handles from FramewinDLG.c
@@ -75,5 +78,63 @@ void UI_Update_FilamentWeight(int weight) {
             snprintf(weightStr, sizeof(weightStr), "%d g", weight);
             TEXT_SetText(hItem, weightStr);
         }
+    }
+}
+
+static WM_HWIN hAutoCloseMessageBox = 0;
+static int autoCloseCounter = 0;
+
+static void AutoCloseMessageBox_Callback(WM_MESSAGE *pMsg) {
+    switch (pMsg->MsgId) {
+        case WM_TIMER:
+            autoCloseCounter++;
+            if (autoCloseCounter >= 30) { // 30 * 100ms = 3 seconds
+                GUI_EndDialog(pMsg->hWin, 0);
+                hAutoCloseMessageBox = 0;
+            } else {
+                WM_RestartTimer(pMsg->Data.v, 100);
+            }
+            break;
+            
+        case WM_NOTIFY_PARENT:
+            if (pMsg->Data.v == WM_NOTIFICATION_RELEASED) {
+                GUI_EndDialog(pMsg->hWin, 0);
+                hAutoCloseMessageBox = 0;
+            }
+            break;
+            
+        default:
+            MESSAGEBOX_Callback(pMsg);
+            break;
+    }
+}
+
+void UI_Show_FileUploadSuccess(void) {
+    // Close existing message box if any
+    if (hAutoCloseMessageBox != 0) {
+        GUI_EndDialog(hAutoCloseMessageBox, 0);
+        hAutoCloseMessageBox = 0;
+    }
+    
+    // Create message box
+    hAutoCloseMessageBox = MESSAGEBOX_Create("File uploaded!", "Success", 0);
+    
+    if (hAutoCloseMessageBox != 0) {
+        // Setup callback
+        WM_SetCallback(hAutoCloseMessageBox, AutoCloseMessageBox_Callback);
+        
+        // Center the message box on screen
+        int xSize = WM_GetWindowSizeX(hAutoCloseMessageBox);
+        int ySize = WM_GetWindowSizeY(hAutoCloseMessageBox);
+        int xPos = (LCD_GetXSize() - xSize) / 2;
+        int yPos = (LCD_GetYSize() - ySize) / 2;
+        WM_MoveTo(hAutoCloseMessageBox, xPos, yPos);
+        
+        // Start timer for auto-close
+        autoCloseCounter = 0;
+        WM_CreateTimer(hAutoCloseMessageBox, 0, 100, 0);
+        
+        // Ensure it's on top
+        WM_BringToTop(hAutoCloseMessageBox);
     }
 }

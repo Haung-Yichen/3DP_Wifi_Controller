@@ -132,7 +132,7 @@ DRESULT SD_read(BYTE lun, BYTE *buff, DWORD sector, UINT count)
   uint32_t startTick;
 
   // 設定讀取超時為 1000ms，給予 SD 卡足夠的反應時間
-  const uint32_t READ_TIMEOUT_MS = 10000;
+  const uint32_t READ_TIMEOUT_MS = 20000;
 
   if(BSP_SD_ReadBlocks((uint32_t*)buff,
                        (uint32_t) (sector),
@@ -169,8 +169,8 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
   DRESULT res = RES_ERROR;
   uint32_t startTick;
 
-  // 建議將超時設定為 1000ms，SD 卡規範允許寫入最長延遲可達 500ms+
-  const uint32_t WRITE_TIMEOUT_MS = 1000;
+  // 建議將超時設定為 5000ms，SD 卡規範允許寫入最長延遲可達 500ms+
+  const uint32_t WRITE_TIMEOUT_MS = 5000;
 
   if(BSP_SD_WriteBlocks((uint32_t*)buff,
                         (uint32_t)(sector),

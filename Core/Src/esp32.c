@@ -4,6 +4,7 @@
 #include "fileTask.h"
 #include "cmdList.h"
 #include "usart.h"
+#include "ui_updater.h"
 
 
 #define ESP32_OK				 "ok\n"              //用於與esp32同步狀態
@@ -189,6 +190,7 @@ void TransmissionOverHandler(const char *args, ResStruct_t *_resStruct) {
 		// }
 	}
 	printf("%-20s \r\n======================TransMission Successed=====================\r\n", "[esp32.c]");
+	UI_Show_FileUploadSuccess();
 	ESP32_SetState(ESP32_IDLE);
 	sendString_to_Esp32(ESP32_OK);
 }

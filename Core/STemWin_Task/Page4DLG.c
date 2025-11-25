@@ -23,6 +23,7 @@
 
 #include "DIALOG.h"
 #include "usart.h"
+#include "esp32.h"
 
 /*********************************************************************
 *
@@ -35,7 +36,8 @@
 #define ID_TEXT_CAM_ST   (GUI_ID_USER + 0x02)
 #define ID_TEXT_SYS_1    (GUI_ID_USER + 0x03)
 #define ID_TEXT_SYS_2    (GUI_ID_USER + 0x04)
-#define ID_BTN_ESP32_BURN (GUI_ID_USER + 0x05)
+#define ID_TEXT_SYS_IP   (GUI_ID_USER + 0x05)
+#define ID_BTN_ESP32_BURN (GUI_ID_USER + 0x06)
 
 
 // USER START (Optionally insert additional defines)
@@ -65,7 +67,8 @@ static const GUI_WIDGET_CREATE_INFO _aDialogCreate[] = {
 	// System Info
 	{TEXT_CreateIndirect, "System Info:", ID_TEXT_SYS_1, 10, 70, 290, 20, 0, 0x0, 0},
 	{TEXT_CreateIndirect, "FW: v1.0.0", ID_TEXT_SYS_2, 10, 95, 290, 20, 0, 0x0, 0},
-	{BUTTON_CreateIndirect, "esp32 burn", ID_BTN_ESP32_BURN, 10, 120, 140, 40, 0, 0x0, 0},
+	{TEXT_CreateIndirect, "IP: ---", ID_TEXT_SYS_IP, 10, 120, 290, 20, 0, 0x0, 0},
+	{BUTTON_CreateIndirect, "esp32 burn", ID_BTN_ESP32_BURN, 10, 145, 140, 40, 0, 0x0, 0},
 	// USER START (Optionally insert additional widgets)
 	// USER END
 };
@@ -116,6 +119,16 @@ static void _cbDialog(WM_MESSAGE *pMsg) {
 			hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_SYS_2);
 			TEXT_SetFont(hItem, GUI_FONT_16B_1);
 			TEXT_SetTextColor(hItem, GUI_WHITE);
+
+			// System Info IP
+			hItem = WM_GetDialogItem(pMsg->hWin, ID_TEXT_SYS_IP);
+			TEXT_SetFont(hItem, GUI_FONT_16B_1);
+			TEXT_SetTextColor(hItem, GUI_WHITE);
+			if (strlen(ip) > 0) {
+				char ipText[20];
+				snprintf(ipText, sizeof(ipText), "IP: %s", ip);
+				TEXT_SetText(hItem, ipText);
+			}
 
 			// ESP32 Burn Button
 			hItem = WM_GetDialogItem(pMsg->hWin, ID_BTN_ESP32_BURN);

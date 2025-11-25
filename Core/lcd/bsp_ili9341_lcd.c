@@ -181,8 +181,7 @@ static void ILI9341_FSMC_Config(void) {
 static void ILI9341_REG_Config(void) {
 	lcdid = ILI9341_ReadID();
 
-	// if (lcdid == LCDID_ILI9341) {
-	if (1) {
+	if (lcdid == LCDID_ILI9341) {
 		/*  Power control B (CFh)  */
 		DEBUG_DELAY();
 		ILI9341_Write_Cmd(0xCF);
@@ -303,9 +302,9 @@ static void ILI9341_REG_Config(void) {
 
 		/* memory access control set */
 		DEBUG_DELAY();
-		ILI9341_Write_Cmd(0x36);
-		ILI9341_Write_Data(0xC8); /*竖屏  左上角到 (起点)到右下角 (终点)扫描方式*/
-		DEBUG_DELAY();
+		// ILI9341_Write_Cmd(0x36);
+		// ILI9341_Write_Data(0xC8); /*竖屏  左上角到 (起点)到右下角 (终点)扫描方式*/
+		// DEBUG_DELAY();
 
 		/* column address control set */
 		ILI9341_Write_Cmd(CMD_SetCoordinateX);
@@ -398,10 +397,11 @@ static void ILI9341_REG_Config(void) {
 		//	ILI9341_Write_Data ( 0XC0 );
 
 		/* memory access control set */
-		DEBUG_DELAY();
-		ILI9341_Write_Cmd(0x36); //Memory Access Control
-		ILI9341_Write_Data(0x00 | (1 << 3)); /*竖屏  左上角到 (起点)到右下角 (终点)扫描方式*/
-		DEBUG_DELAY();
+		/* 註解：此處不設定 0x36，由 ILI9341_GramScan() 統一管理 */
+		// DEBUG_DELAY();
+		// ILI9341_Write_Cmd(0x36); //Memory Access Control
+		// ILI9341_Write_Data(0x00 | (1 << 3)); /*竖屏  左上角到 (起点)到右下角 (终点)扫描方式*/
+		// DEBUG_DELAY();
 
 		ILI9341_Write_Cmd(0x3A);
 		ILI9341_Write_Data(0x55);
@@ -547,6 +547,7 @@ uint16_t ILI9341_ReadID(void) {
 	id |= ILI9341_Read_Data();
 
 	if (id == LCDID_ST7789V) {
+		printf("%-20s lcd drv ic: %s\r\n", "[bsp_lcd.c]", "ST7789V");
 		return id;
 	} else {
 		ILI9341_Write_Cmd(0xD3);
@@ -556,6 +557,7 @@ uint16_t ILI9341_ReadID(void) {
 		id <<= 8;
 		id |= ILI9341_Read_Data();
 		if (id == LCDID_ILI9341) {
+			printf("%-20s lcd drv ic: %s\r\n", "[bsp_lcd.c]", "ILI9341");
 			return id;
 		}
 	}
@@ -647,12 +649,14 @@ void ILI9341_GramScan(uint8_t ucOption) {
 
 	//0x36命令参数的高3位可用于设置GRAM扫描方向
 	ILI9341_Write_Cmd(0x36);
-	// if (lcdid == LCDID_ILI9341) {
-	// 	ILI9341_Write_Data(0x08 | (ucOption << 5)); //根据ucOption的值设置LCD参数，共0-7种模式
-	// } else if (lcdid == LCDID_ST7789V) {
-	// 	ILI9341_Write_Data(0x00 | (ucOption << 5)); //根据ucOption的值设置LCD参数，共0-7种模式
-	// }
-	ILI9341_Write_Data(0x00 | (ucOption << 5));
+	if (lcdid == LCDID_ILI9341) {
+		ILI9341_Write_Data(0x08 | (ucOption << 5)); //ILI9341: BGR=1
+	} else if (lcdid == LCDID_ST7789V) {
+		ILI9341_Write_Data(0x08 | (ucOption << 5)); //ST7789V: BGR=1 (與 ILI9341 相同)
+	} else {
+		// 未知 IC，使用預設值
+		ILI9341_Write_Data(0x08 | (ucOption << 5));
+	}
 	ILI9341_Write_Cmd(CMD_SetCoordinateX);
 	ILI9341_Write_Data(0x00); /* x 起始坐标高8位 */
 	ILI9341_Write_Data(0x00); /* x 起始坐标低8位 */
