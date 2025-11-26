@@ -106,6 +106,7 @@ void PC_Print_Task(void *argument) {
 
 
 	//================ 開始列印 ================//
+	UI_Update_Status("Printing...");
 	f_lseek(&file, 0);
 	pause = false;
 	last_time_update = xTaskGetTickCount();
@@ -191,6 +192,7 @@ CleanRes:
 	pause = false;
 	PC_SetState(PC_IDLE);
 	ESP32_SetState(ESP32_IDLE);
+	UI_Update_Status("Idle");
 	stopRequested = false;
 	pcTaskHandle = NULL;
 	vTaskDelete(NULL);

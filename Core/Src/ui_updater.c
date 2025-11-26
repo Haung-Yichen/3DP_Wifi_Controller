@@ -14,9 +14,21 @@ extern WM_HWIN hPage3;
 #define ID_TEXT_BED_VALUE   (GUI_ID_USER + 0x07)
 #define ID_PROGBAR_0        (GUI_ID_USER + 0x08)
 #define ID_TEXT_TIME        (GUI_ID_USER + 0x09)
+#define ID_TEXT_STATUS      (GUI_ID_USER + 0x0A)
 
 // Widget IDs from Page3DLG.c
 #define ID_TEXT_WEIGHT      (GUI_ID_USER + 0x03)
+
+void UI_Update_Status(const char* status) {
+    if (hPage1 != 0) {
+        WM_HWIN hItem = WM_GetDialogItem(hPage1, ID_TEXT_STATUS);
+        if (hItem != 0) {
+            char statusStr[32];
+            snprintf(statusStr, sizeof(statusStr), "Status: %s", status);
+            TEXT_SetText(hItem, statusStr);
+        }
+    }
+}
 
 void UI_Update_NozzleTemp(int temp) {
     if (hPage1 != 0) {

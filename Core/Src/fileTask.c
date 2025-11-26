@@ -3,6 +3,7 @@
 #include "usart.h"
 #include "esp32.h"
 #include "ff_print_err.h"
+#include "ui_updater.h"
 
 #define SD_RTY_TIMES			 2			//sd寫檔重試次數
 #define USE_SHA256               1
@@ -122,6 +123,7 @@ static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx, G
 		   "Gcode_RxHandler_Task created!",
 		   xPortGetFreeHeapSize());
 	printf("%-20s %-20s \r\n", "[fileTask.c]", "Ready to receive.");
+	UI_Update_Status("Uploading...");
 
 #ifdef DEBUG
 	ctx->stackHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
@@ -248,6 +250,7 @@ static RECV_STATUS_TypeDef transmittingOverStage(transmittingCtx_TypeDef* ctx, G
 	// 	vQueueDelete(xFileQueue);
 	// 	xFileQueue = NULL;
 	// }
+	UI_Update_Status("Idle");
 	gcodeRxTaskHandle = NULL;
 	vTaskDelete(NULL);
 	return RECV_OK;
