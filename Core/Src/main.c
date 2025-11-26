@@ -58,7 +58,6 @@ int main(void) {
 	MX_USART1_UART_Init();
 	MX_USART2_UART_Init();
 	MX_USART3_UART_Init();
-	// setUART2HighZ();
 	__HAL_RCC_CRC_CLK_ENABLE();
 	/*------------CUSTOMIZE FUNC INIT------------*/
 	LED_GPIO_Config();
@@ -85,32 +84,21 @@ void Sanitize_SD_Bus(void)
 {
 	GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-	// 1. 確保 SDMMC 周邊時脈已關閉，避免硬體衝突
-	// 注意：請根據您的具體型號修改 (如 __HAL_RCC_SDIO_CLK_DISABLE)
 	__HAL_RCC_SDIO_CLK_DISABLE();
+	__HAL_RCC_GPIOC_CLK_ENABLE();
+	__HAL_RCC_GPIOD_CLK_ENABLE();
 
-	// 2. 啟用 GPIO 時脈 (請依據實際板子線路修改 Port)
-	__HAL_RCC_GPIOC_CLK_ENABLE(); // 假設 D0-D3 與 CK 在 Port C
-	__HAL_RCC_GPIOD_CLK_ENABLE(); // 假設 CMD 在 Port D
-
-	// 3. 將 SDMMC 引腳配置為通用推挽輸出 (Output Push-Pull)
-	// CK (PC12), D0 (PC8) 為例
 	GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12;
 	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-	// CMD (PD2) 為例
 	GPIO_InitStruct.Pin = GPIO_PIN_2;
 	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-	// 4. 將 CMD 與 Data 線拉高 (Idle State)
 	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_2, GPIO_PIN_SET); // CMD High
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11, GPIO_PIN_SET); // Data High
 
-	// 5. 手動翻轉 CK 引腳，產生 80 個時脈週期 (Bit-Bang)
-	// 這是為了讓 SD 卡內部狀態機推進，並釋放 Busy (D0 Low) 狀態
 	for(int i = 0; i < 80; i++)
 	{
 		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_SET);   // CK High
@@ -118,8 +106,6 @@ void Sanitize_SD_Bus(void)
 		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_12, GPIO_PIN_RESET); // CK Low
 		HAL_Delay(1);
 	}
-
-	// 6. 釋放 GPIO，將引腳重置，讓後續的 HAL_SD_Init 接手配置為 Alternate Function
 	HAL_GPIO_DeInit(GPIOC, GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11 | GPIO_PIN_12);
 	HAL_GPIO_DeInit(GPIOD, GPIO_PIN_2);
 }

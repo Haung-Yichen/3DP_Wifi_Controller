@@ -35,8 +35,11 @@ typedef enum {
 	PC_ERROR
 } PC_Status_TypeDef;
 
-static uint8_t pc_TxBuf[100] = {0};
-static uint8_t pc_RxBuf[50] = {0};
+// 用於 UART3 中斷回調
+extern SemaphoreHandle_t printerRxSemaphore;
+extern volatile bool printerOkReceived;
+extern char printerRxBuf[64];
+extern volatile uint16_t printerRxLen;
 
 void PC_init(void);
 
@@ -122,6 +125,11 @@ void GetFilamentWeightHandler(const char *args, ResStruct_t *_resStruct);
  * @brief 緊急停止命令的處理函式
  */
 void EmergencyStopHandler(const char *args, ResStruct_t *_resStruct);
+
+/**
+ * @brief 獲取SD卡所有檔案命令的處理函式
+ */
+void GetAllFilesHandler(const char *args, ResStruct_t *_resStruct);
 
 
 #ifdef __cplusplus

@@ -26,6 +26,8 @@
 #include "UITask.h"
 #include "fileTask.h"
 #include "usart.h"
+#include "printerController.h"
+#include <string.h>
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
@@ -273,6 +275,30 @@ void USART2_IRQHandler(void) {
   * @brief This function handles USART3 global interrupt.
   */
 void USART3_IRQHandler(void) {
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	
+	// 處理空閒中斷 - 用於接收印表機回應
+	if (__HAL_UART_GET_FLAG(&huart3, UART_FLAG_IDLE)) {
+		__HAL_UART_CLEAR_IDLEFLAG(&huart3);
+		HAL_UART_AbortReceive(&huart3);
+		
+		// 計算接收到的資料長度
+		printerRxLen = sizeof(printerRxBuf) - 1 - __HAL_DMA_GET_COUNTER(huart3.hdmarx);
+		printerRxBuf[printerRxLen] = '\0';
+		
+		// 檢查是否收到 "ok"
+		if (printerRxLen > 0 && strstr(printerRxBuf, "ok") != NULL) {
+			printerOkReceived = true;
+		} else {
+			printerOkReceived = false;
+		}
+		
+		// 通知列印任務
+		if (printerRxSemaphore != NULL) {
+			xSemaphoreGiveFromISR(printerRxSemaphore, &xHigherPriorityTaskWoken);
+		}
+		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+	}
 	HAL_UART_IRQHandler(&huart3);
 }
 

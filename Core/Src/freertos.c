@@ -30,6 +30,7 @@
 #include "hx711.h"
 #include "fileTask.h"
 #include "printerController.h"
+#include "usart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -73,7 +74,7 @@ const osThreadAttr_t Touch_Task_attributes = {
 osThreadId_t esp32RxHandlerTaskHandle;
 const osThreadAttr_t esp32RxHandlerTask_attributes = {
 	.name = "Esp32_RxTask",
-	.stack_size = configMINIMAL_STACK_SIZE * 12,
+	.stack_size = configMINIMAL_STACK_SIZE * 16,
 	.priority = (osPriority) osPriorityHigh,
 };
 
@@ -162,6 +163,13 @@ void StartDefaultTask(void *argument) {
 	FileTask_Init(); // 初始化檔案任務佇列
 	ESP32_Init();
 	Hx711_Init(&hx711);
+	
+	// 初始化印表機通訊 (需要在 RTOS 啟動後)
+	printerRxSemaphore = xSemaphoreCreateBinary();
+	if (printerRxSemaphore == NULL) {
+		printf("%-20s Failed to create printerRxSemaphore\r\n", "[freertos.c]");
+	}
+	__HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
 
 	for (;;) {
 		size_t free_heap = xPortGetFreeHeapSize();
@@ -180,11 +188,11 @@ void StartDefaultTask(void *argument) {
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName) {
+	/* 先打印哪個任務溢出（在禁用中斷之前） */
+	printf("%-20s Stack overflow in task: %s\r\n", "[freertos.c]", pcTaskName);
+	
 	/* 停用中斷，避免繼續運行造成更大破壞 */
 	taskDISABLE_INTERRUPTS();
-
-	/* 打印哪個任務溢出（需串口或日誌支持） */
-	printf("%-20s Stack overflow in task: %s\n", pcTaskName);
 
 	/* 可以在這裡打開 LED 快速閃爍作為錯誤提示 */
 	// Error_LED_Blink();

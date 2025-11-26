@@ -38,6 +38,7 @@
 #define CMD_Disable_Camera      (const char*)"cDisableCamera"     //進用錄影
 #define CMD_GetFilament_Weight  (const char*)"cReqFilamentWeight" //請求耗材重量
 #define CMD_Emergency_Stop      (const char*)"cEmergencyStop"     //緊急停止
+#define CMD_GET_ALL_FILES       (const char*)"cGetAllFiles"       //獲取SD卡所有檔案
 
 
 /*            錯誤碼            */
