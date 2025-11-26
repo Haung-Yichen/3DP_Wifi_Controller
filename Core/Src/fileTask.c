@@ -30,6 +30,9 @@ typedef struct {
 	uint32_t stackHighWaterMark;	// 監測stack用量
 	uint32_t fnumCount;				// 監測檔案寫入總位元
 	uint32_t timer;					// 計算接收耗時
+	uint32_t packageNum;			// 檔案接收次數計數器
+	uint16_t timeoutCnt;			// 超時檢查計數器
+	uint32_t syncCounter;			// f_sync 計數器
 	SHA256_CTX sha256_ctx;
 }transmittingCtx_TypeDef;
 
@@ -57,23 +60,29 @@ void Gcode_RxHandler_Task(void *argument) {
 	transmittingCtx.f_res = FR_OK;
 	transmittingCtx.fnumCount = 0;
 	transmittingCtx.timer = 0;
-	transmittingCtx.stackHighWaterMark = 0;
+	transmittingCtx.stackHighWaterMark = configMINIMAL_STACK_SIZE * 30;
+	transmittingCtx.packageNum = 0;
+	transmittingCtx.timeoutCnt = 0;
+	transmittingCtx.syncCounter = 0;
 
 	GcodeTaskArgs_t* taskArgs = (GcodeTaskArgs_t*)argument;
 
 	if (taskArgs == NULL || taskArgs->ownerTaskHandle == NULL) {
 		printf("%-20s argument is NULL or ownerTaskHandle is NULL\r\n", "[fileTask.c]");
-		goto Delete;
+		goto CleanUp;
 	}
 
-	if (RECV_OK != transmittingInitStage(&transmittingCtx, taskArgs)) { goto Delete; }
+	if (RECV_OK != transmittingInitStage(&transmittingCtx, taskArgs)) { goto CleanUp; }
 
 	while (1) {
 		/*    判斷是否該結束接收   */
 		if (RECV_OK != transmittingStage(&transmittingCtx) || delete == true) {
-			Delete: transmittingOverStage(&transmittingCtx, taskArgs);
+			break; // 跳出迴圈，進入清理階段
 		}
 	}
+
+CleanUp:
+	transmittingOverStage(&transmittingCtx, taskArgs);
 }
 
 static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx, GcodeTaskArgs_t* taskArgs) {
@@ -124,35 +133,61 @@ static RECV_STATUS_TypeDef transmittingInitStage(transmittingCtx_TypeDef* ctx, G
 
 static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx) {
 	UINT fnum = 0;
-	uint32_t packageNum = 0;		// 檔案接收次數計數器
-	static uint16_t timeoutCnt = 0;		// 超時檢查計數器
 	bool received_data = false;
 	uartRxBuf_TypeDef *pFileBuf = NULL;
+	uint8_t retryCount = 0;
 
 	received_data = xQueueReceive(xFileQueue, &pFileBuf, pdMS_TO_TICKS(1000));
 
 	/*========== 正常接收檔案 ==========*/
 	if (received_data && pFileBuf != NULL) {
 		if (pFileBuf->len != 0) {
-			timeoutCnt = 0;
-			packageNum++;
-			ctx->f_res = f_write(&ctx->file, pFileBuf->data, pFileBuf->len, &fnum);
-			if (ctx->f_res != FR_OK) {
-				printf_fatfs_error(ctx->f_res);
-				xQueueSend(xFreeBufferQueue, &pFileBuf, 0);
-				return RECV_FAIL;
-			} else {
-				ctx->fnumCount += fnum;
-				if (packageNum >= 10) { // 分析堆棧使用狀況
-					packageNum = 0;
-					if (uxTaskGetStackHighWaterMark(NULL) < ctx->stackHighWaterMark) {
-						ctx->stackHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
-					}
+			ctx->timeoutCnt = 0;
+			ctx->packageNum++;
+			ctx->syncCounter++;
+			
+			// 寫入重試機制
+			for (retryCount = 0; retryCount < SD_RTY_TIMES; retryCount++) {
+				ctx->f_res = f_write(&ctx->file, pFileBuf->data, pFileBuf->len, &fnum);
+				if (ctx->f_res == FR_OK) {
+					break;
 				}
-#if USE_SHA256
-				sha256_update(&ctx->sha256_ctx, pFileBuf->data, pFileBuf->len);
-#endif
+				printf("%-20s SD write retry %d, err: ", "[fileTask.c]", retryCount + 1);
+				printf_fatfs_error(ctx->f_res);
+				vTaskDelay(pdMS_TO_TICKS(10)); // 短暫延遲後重試
 			}
+			
+			if (ctx->f_res != FR_OK) {
+				printf("%-20s SD write failed after %d retries\r\n", "[fileTask.c]", SD_RTY_TIMES);
+				xQueueSend(xFreeBufferQueue, &pFileBuf, 0);
+				if (uartRxPaused) {
+					UART_Resume_Reception();
+				}
+				return RECV_FAIL;
+			}
+			
+			ctx->fnumCount += fnum;
+			
+			// 每 50 個包執行一次 f_sync，確保資料寫入 SD 卡
+			if (ctx->syncCounter >= 50) {
+				ctx->syncCounter = 0;
+				ctx->f_res = f_sync(&ctx->file);
+				if (ctx->f_res != FR_OK) {
+					printf("%-20s f_sync failed: ", "[fileTask.c]");
+					printf_fatfs_error(ctx->f_res);
+				}
+			}
+			
+			// 每 20 個包分析一次堆棧使用狀況
+			if (ctx->packageNum >= 20) {
+				ctx->packageNum = 0;
+				if (uxTaskGetStackHighWaterMark(NULL) < ctx->stackHighWaterMark) {
+					ctx->stackHighWaterMark = uxTaskGetStackHighWaterMark(NULL);
+				}
+			}
+#if USE_SHA256
+			sha256_update(&ctx->sha256_ctx, pFileBuf->data, pFileBuf->len);
+#endif
 			xQueueSend(xFreeBufferQueue, &pFileBuf, 0);
 			if (uartRxPaused) {
 				UART_Resume_Reception();
@@ -172,9 +207,9 @@ static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx) {
 	}
 
 	/*========== 收到空包 (len == 0) 視為潛在超時或結束信號 ==========*/
-	// f_sync(&ctx->file);
-	timeoutCnt++;
-	if (timeoutCnt >= 5) {
+	f_sync(&ctx->file);
+	ctx->timeoutCnt++;
+	if (ctx->timeoutCnt >= 5) {
 		printf("%-20s timeout waiting for uart\r\n", "[fileTask.c]");
 		UART_SendString_DMA(&ESP32_USART_PORT, "reset\n");
 		return RECV_FAIL;
@@ -185,6 +220,9 @@ static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx) {
 
 static RECV_STATUS_TypeDef transmittingOverStage(transmittingCtx_TypeDef* ctx, GcodeTaskArgs_t* taskArgs) {
 	uint32_t tmp = xTaskGetTickCount() - ctx->timer;
+
+	// 確保所有資料寫入 SD 卡
+	f_sync(&ctx->file);
 
 #if USE_SHA256
 	// 完成 SHA256 計算
@@ -254,7 +292,7 @@ void calFileHash(char* hashOutput) {
 	}
 	sha256_init(&sha256_ctx);
 
-	while (f_read(&tmpfile, fileBuf, sizeof(fileBuf), &fnum) == FR_OK) {
+	while (f_read(&tmpFile, fileBuf, sizeof(fileBuf), &fnum) == FR_OK && fnum > 0) {
 		sha256_update(&sha256_ctx, fileBuf, fnum);
 	}
 	sha256_final(&sha256_ctx, hash_output);

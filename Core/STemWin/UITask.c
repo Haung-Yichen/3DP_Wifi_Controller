@@ -13,20 +13,25 @@ void show_boot_animation(void) {
 	const int bar_x = (screen_x - bar_width) / 2;
 	const int bar_y = (screen_y / 2) + 20;
 
-	GUI_SetBkColor(GUI_BLUE);
+	GUI_SetBkColor(GUI_DARKGRAY);
 	GUI_Clear();
 	GUI_SetColor(GUI_WHITE);
-	GUI_SetFont(&GUI_Font24_ASCII);
+	GUI_SetFont(GUI_FONT_24B_1);
 	GUI_DispStringHCenterAt("Booting...", screen_x / 2, (screen_y / 2) - 30);
+	
+	GUI_SetColor(GUI_BLACK);
+	GUI_FillRect(bar_x, bar_y, bar_x + bar_width, bar_y + bar_height);
+	
 	GUI_SetColor(GUI_WHITE);
 	GUI_DrawRect(bar_x, bar_y, bar_x + bar_width, bar_y + bar_height);
-	GUI_SetColor(GUI_WHITE);
+	
+	GUI_SetColor(GUI_GREEN);
 	for (int i = 1; i <= bar_width - 4; i++) {
 		GUI_FillRect(bar_x + 2, bar_y + 2, bar_x + 2 + i, bar_y + bar_height - 2);
 		osDelay(10);
 	}
 	// 動畫完成後清屏為黑色，等待 GUI 任務繪製主界面
-	GUI_SetBkColor(GUI_BLACK);
+	GUI_SetBkColor(GUI_DARKGRAY);
 	GUI_Clear();
 }
 

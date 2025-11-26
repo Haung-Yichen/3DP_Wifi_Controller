@@ -70,12 +70,15 @@ void PC_RegCallback(void) {
 void PC_Print_Task(void *argument) {
 	FIL file;
 	FRESULT f_res;
-	UINT fnum;
 
 	bool file_opened = false;
 	char printer_response[64] = {0};
 	__attribute__((aligned(4))) char gcode_line[128];
 	uint32_t line = 0;
+	DWORD file_size = 0;
+	DWORD bytes_read = 0;
+	TickType_t last_time_update = 0;
+	uint32_t initial_total_seconds = 0;
 
 	//================ 錯誤處理 ================//
 	if (strlen(curFileName) <= 0) {
@@ -93,12 +96,19 @@ void PC_Print_Task(void *argument) {
 		printf("%-20s file has no content\r\n", "[printerController.c]");
 		goto CleanRes;
 	}
+
 	PC_SetState(PC_BUSY);
-	//================ 取得列印時間 ================//
-	PC_ParseRemainingTime(&file);
+	PC_ParseRemainingTime(&file); // 取得列印時間
+	initial_total_seconds = pcParameter.remainingTime.hours * 3600 + 
+	                        pcParameter.remainingTime.minutes * 60 + 
+	                        pcParameter.remainingTime.seconds;
+	file_size = f_size(&file); // 計算檔案大小用於進度追蹤
+
+
 	//================ 開始列印 ================//
 	f_lseek(&file, 0);
 	pause = false;
+	last_time_update = xTaskGetTickCount();
 	while (1) {
 		memset(gcode_line, 0, sizeof(gcode_line));
 		if (f_gets(gcode_line, sizeof(gcode_line), &file) == NULL) {
@@ -113,73 +123,77 @@ void PC_Print_Task(void *argument) {
 		}
 		if (stopRequested) {
 			printf("%-20s Stop requested by user. Terminating task.\r\n", "[printerController.c]");
-			break; // 收到停止請求，跳出迴圈
+			break;
 		}
 		while (pause) {
 			osDelay(pdMS_TO_TICKS(10));
 			if (stopRequested) {
 				printf("%-20s Stop requested during pause. Terminating task.\r\n", "[printerController.c]");
-				goto CleanRes; // 在暫停時被要求停止，直接跳到清理
+				goto CleanRes;
+			}
+		}
+		line++;
+		bytes_read = f_tell(&file); // 更新進度
+		if (file_size > 0) {
+			pcParameter.progress = (uint8_t)((bytes_read * 100) / file_size);
+		}
+
+		TickType_t current_tick = xTaskGetTickCount(); // 更新剩餘時間 (每秒更新一次)
+		if ((current_tick - last_time_update) >= pdMS_TO_TICKS(1000)) {
+			last_time_update = current_tick;
+
+			if (pcParameter.progress > 0 && initial_total_seconds > 0) {
+				uint32_t remaining_seconds = (initial_total_seconds * (100 - pcParameter.progress)) / 100;
+				pcParameter.remainingTime.hours = remaining_seconds / 3600;
+				pcParameter.remainingTime.minutes = (remaining_seconds % 3600) / 60;
+				pcParameter.remainingTime.seconds = remaining_seconds % 60;
 			}
 		}
 
-		line++;
-		// 跳過空行和註解行
-		// if (strlen(gcode_line) == 0 || strchr(gcode_line, ';') != NULL) {
-		//     continue;
-		// }
-
-		// 發送 G-code 到印表機
+		if (gcode_line[0] == '\n' || gcode_line[0] == '\r' || gcode_line[0] == ';') {
+		    continue;
+		}
 		HAL_StatusTypeDef uart_status = HAL_UART_Transmit(&huart3,
 		                                                 (uint8_t*)gcode_line,
 		                                                 strlen(gcode_line),
 		                                                 1000);
-
 		if (uart_status != HAL_OK) {
 		    printf("UART transmission failed: %d\r\n", uart_status);
 		    break;
 		}
+		memset(printer_response, 0, sizeof(printer_response)); // 等待印表機回復 "ok"
+		uart_status = HAL_UART_Receive(&huart3,
+		                              (uint8_t*)printer_response,
+		                              sizeof(printer_response) - 1,
+		                              5000);
 
-		// 等待印表機回復 "ok"
-		// memset(printer_response, 0, sizeof(printer_response));
+		if (uart_status == HAL_OK || uart_status == HAL_TIMEOUT) {
+		    printer_response[sizeof(printer_response) - 1] = '\0';
 
-		// 使用阻塞接收等待 "ok" 回應
-		// uart_status = HAL_UART_Receive(&huart3,
-		//                               (uint8_t*)printer_response,
-		//                               sizeof(printer_response) - 1,
-		//                               5000);  // 5秒超時
-
-		// if (uart_status == HAL_OK || uart_status == HAL_TIMEOUT) {
-		//     // 確保字串結尾
-		//     printer_response[sizeof(printer_response) - 1] = '\0';
-		//
-		//     // 檢查是否收到 "ok"
-		//     if (strstr(printer_response, "ok") != NULL) {
-		//         printf("Printer responded: %s", printer_response);
-		//     } else {
-		//         printf("Unexpected printer response: %s\r\n", printer_response);
-		//         // 繼續執行，不中斷列印
-		//     }
-		// } else {
-		//     printf("Failed to receive printer response: %d\r\n", uart_status);
-		//     // 可選擇是否中斷列印
-		//     break;
-		// }
-		// 清空 gcode_line 準備下一行
-
-		vTaskDelay(50);
+		    if (strstr(printer_response, "ok") == NULL) { // 檢查是否收到 "ok"
+		        printf("Unexpected printer response: %s\r\n", printer_response);
+		    }
+		} else {
+		    printf("Failed to receive printer response: %d\r\n", uart_status);
+		    break;
+		}
 	}
 CleanRes:
 	if (file_opened) {
 		f_close(&file);
 	}
+	if (!stopRequested) {
+		pcParameter.progress = 100;
+		pcParameter.remainingTime.hours = 0;
+		pcParameter.remainingTime.minutes = 0;
+		pcParameter.remainingTime.seconds = 0;
+	}
 	pause = false;
 	PC_SetState(PC_IDLE);
-	stopRequested = false; // 重置旗標
+	ESP32_SetState(ESP32_IDLE);
+	stopRequested = false;
 	pcTaskHandle = NULL;
 	vTaskDelete(NULL);
-	// 這行 printf 永遠不應該被執行
-	// printf("%-20s !!! ERROR: Task did not terminate!\r\n", "[printerController.c]");
 }
 
 PC_Status_TypeDef PC_GetState(void) {
@@ -331,39 +345,31 @@ static void PC_ParseRemainingTime(FIL *file) {
 	char gcode_line[256] = {0};
 	UINT fnum = 0;
 
-	// 僅讀取檔案開頭的 256 bytes，時間資訊通常在這裡
 	f_read(file, gcode_line, sizeof(gcode_line) - 1, &fnum);
-	gcode_line[sizeof(gcode_line) - 1] = '\0'; // 確保字串結尾
+	gcode_line[sizeof(gcode_line) - 1] = '\0';
 
 	const char *search_string = ";Print time: ";
 	char *pos = strstr(gcode_line, search_string);
 
 	if (pos != NULL) {
-		// 將指標移動到搜尋字串之後
 		pos += strlen(search_string);
-
 		// 解析時間格式，可能是 "HH:MM:SS" 或 "MM:SS" 或只有秒數
 		int hours = 0, minutes = 0, seconds = 0;
 		int parsed = sscanf(pos, "%d:%d:%d", &hours, &minutes, &seconds);
-		
 		if (parsed == 3) {
-			// Format: HH:MM:SS
 			pcParameter.remainingTime.hours = (uint8_t)hours;
 			pcParameter.remainingTime.minutes = (uint8_t)minutes;
 			pcParameter.remainingTime.seconds = (uint8_t)seconds;
 		} else if (parsed == 2) {
-			// Format: MM:SS (hours is actually minutes, minutes is seconds)
 			pcParameter.remainingTime.hours = 0;
 			pcParameter.remainingTime.minutes = (uint8_t)hours;
 			pcParameter.remainingTime.seconds = (uint8_t)minutes;
 		} else {
-			// Only seconds
 			int total_seconds = atoi(pos);
 			pcParameter.remainingTime.hours = total_seconds / 3600;
 			pcParameter.remainingTime.minutes = (total_seconds % 3600) / 60;
 			pcParameter.remainingTime.seconds = total_seconds % 60;
 		}
-
 		printf("%-20s remaining time: %02d:%02d:%02d\r\n", "[printerController.c]", 
 		       pcParameter.remainingTime.hours, 
 		       pcParameter.remainingTime.minutes, 
