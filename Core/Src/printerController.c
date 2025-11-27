@@ -50,6 +50,7 @@ char printerRxBuf[PRINTER_RX_BUF_SIZE] __attribute__((aligned(4)));
 volatile uint16_t printerRxLen = 0;
 
 static void PC_ParseRemainingTime(FIL *file);
+static void PC_ParseTemperatureFromResponse(const char *response);
 
 // 預設超時時間 (毫秒)
 #define GCODE_DEFAULT_TIMEOUT_MS     10000   // 一般命令 10 秒
@@ -130,17 +131,18 @@ static bool PC_SendGcodeAndWaitOk(const char *gcode_line) {
 		}
 		
 		if (xSemaphoreTake(printerRxSemaphore, pdMS_TO_TICKS(single_wait_ms)) == pdTRUE) {
-			// 收到回應
+			// 收到回應，先解析溫度 (Marlin 回應格式: "ok T:xxx B:xxx" 或 "T:xxx B:xxx")
+			PC_ParseTemperatureFromResponse(printerRxBuf);
+			
 			if (printerOkReceived) {
 				// 成功收到 "ok"
 				return true;
 			} else {
 				// 收到其他回應 (可能是溫度報告或 echo 訊息)
+				// 溫度已在上方解析
+				
 				// 對於阻塞命令，這是正常的，繼續等待
 				if (is_blocking) {
-					// 可以解析溫度報告來更新顯示 (可選)
-					// 例如: " T:150.25 /200.00 B:55.00 /60.00 ..."
-					
 					// 重新啟動接收，等待下一個回應
 					memset(printerRxBuf, 0, sizeof(printerRxBuf));
 					printerRxLen = 0;
@@ -149,7 +151,7 @@ static bool PC_SendGcodeAndWaitOk(const char *gcode_line) {
 					__HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
 				} else {
 					// 非阻塞命令收到非 "ok" 回應，可能是多行回應
-					// 繼續等待 "ok"
+					// 溫度已在上方解析，繼續等待 "ok"
 					memset(printerRxBuf, 0, sizeof(printerRxBuf));
 					printerRxLen = 0;
 					printerOkReceived = false;
@@ -379,6 +381,27 @@ void PC_QueryTemperature(void) {
 		}
 	} else {
 		HAL_UART_AbortReceive(&PRINTING_USART_PORT);
+	}
+}
+
+/**
+ * @brief 從回應字串中解析溫度資料並更新參數
+ * @param response 印表機回應字串
+ * @note  溫度格式: "T:210.5 /210.0 B:60.2 /60.0" 或 "ok T:210.5 /210.0 B:60.2 /60.0"
+ */
+static void PC_ParseTemperatureFromResponse(const char *response) {
+	if (response == NULL) return;
+	
+	// 解析噴頭溫度
+	char *temp_pos = strstr(response, "T:");
+	if (temp_pos != NULL) {
+		pcParameter.nozzleTemp = (uint8_t)atoi(temp_pos + 2);
+	}
+	
+	// 解析熱床溫度
+	char *bed_pos = strstr(response, "B:");
+	if (bed_pos != NULL) {
+		pcParameter.bedTemp = (uint8_t)atoi(bed_pos + 2);
 	}
 }
 
