@@ -4,10 +4,12 @@
 #include "esp32.h"
 #include "ff_print_err.h"
 #include "ui_updater.h"
+#include "bsp_sdio_sdcard.h"
 
-#define SD_RTY_TIMES			 2			//sd寫檔重試次數
+#define SD_RTY_TIMES			 5			//sd寫檔重試次數
 #define USE_SHA256               1
 #define FILE_QUEUE_LEN			 10
+#define SD_WRITE_DELAY_MS		 2			// 每次寫入前的延遲
 
 
 osThreadId_t gcodeRxTaskHandle = NULL;
@@ -150,13 +152,40 @@ static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx) {
 			
 			// 寫入重試機制
 			for (retryCount = 0; retryCount < SD_RTY_TIMES; retryCount++) {
+				// 每次寫入前短暫延遲，讓 SD 卡有時間處理
+				if (retryCount > 0) {
+					vTaskDelay(pdMS_TO_TICKS(20 * retryCount)); // 遞增延遲
+					// 等待 SD 卡就緒
+					uint32_t waitStart = HAL_GetTick();
+					while (BSP_SD_GetCardState() != MSD_OK) {
+						if ((HAL_GetTick() - waitStart) > 500) {
+							printf("%-20s SD card not ready, timeout\r\n", "[fileTask.c]");
+							break;
+						}
+						vTaskDelay(pdMS_TO_TICKS(5));
+					}
+				}
+				
 				ctx->f_res = f_write(&ctx->file, pFileBuf->data, pFileBuf->len, &fnum);
-				if (ctx->f_res == FR_OK) {
+				if (ctx->f_res == FR_OK && fnum == pFileBuf->len) {
 					break;
 				}
+				
 				printf("%-20s SD write retry %d, err: ", "[fileTask.c]", retryCount + 1);
 				printf_fatfs_error(ctx->f_res);
-				vTaskDelay(pdMS_TO_TICKS(10)); // 短暫延遲後重試
+				
+				// 如果是檔案物件無效，嘗試重新開啟
+				if (ctx->f_res == FR_INVALID_OBJECT) {
+					f_close(&ctx->file);
+					vTaskDelay(pdMS_TO_TICKS(50));
+					// 使用 FA_OPEN_ALWAYS 開啟，然後 seek 到檔案尾端 (FatFs R0.11 沒有 FA_OPEN_APPEND)
+					ctx->f_res = f_open(&ctx->file, curFileName, FA_OPEN_ALWAYS | FA_WRITE);
+					if (ctx->f_res == FR_OK) {
+						f_lseek(&ctx->file, f_size(&ctx->file)); // 移動到檔案尾端
+					} else {
+						printf("%-20s Failed to reopen file\r\n", "[fileTask.c]");
+					}
+				}
 			}
 			
 			if (ctx->f_res != FR_OK) {
@@ -170,13 +199,20 @@ static RECV_STATUS_TypeDef transmittingStage(transmittingCtx_TypeDef* ctx) {
 			
 			ctx->fnumCount += fnum;
 			
-			// 每 50 個包執行一次 f_sync，確保資料寫入 SD 卡
-			if (ctx->syncCounter >= 50) {
+			// 每 100 個包執行一次 f_sync，減少 SD 卡負擔
+			if (ctx->syncCounter >= 100) {
 				ctx->syncCounter = 0;
+				// 等待 SD 卡就緒再 sync
+				uint32_t waitStart = HAL_GetTick();
+				while (BSP_SD_GetCardState() != MSD_OK) {
+					if ((HAL_GetTick() - waitStart) > 500) break;
+					vTaskDelay(pdMS_TO_TICKS(5));
+				}
 				ctx->f_res = f_sync(&ctx->file);
 				if (ctx->f_res != FR_OK) {
 					printf("%-20s f_sync failed: ", "[fileTask.c]");
 					printf_fatfs_error(ctx->f_res);
+					// f_sync 失敗不一定是致命錯誤，繼續嘗試
 				}
 			}
 			

@@ -39,8 +39,8 @@ uint8_t BSP_SD_Init(void)
   uSdHandle.Init.ClockBypass         = SDIO_CLOCK_BYPASS_DISABLE;
   uSdHandle.Init.ClockPowerSave      = SDIO_CLOCK_POWER_SAVE_DISABLE;
   uSdHandle.Init.BusWide             = SDIO_BUS_WIDE_1B;
-  uSdHandle.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_DISABLE;
-  uSdHandle.Init.ClockDiv            = 0x10;
+  uSdHandle.Init.HardwareFlowControl = SDIO_HARDWARE_FLOW_CONTROL_ENABLE; // 啟用硬體流控制
+  uSdHandle.Init.ClockDiv            = 0x20; // 降低時鐘速度提高穩定性 (原 0x10)
   
 //  /* Check if the SD card is plugged in the slot */
 //  if(BSP_SD_IsDetected() != SD_PRESENT)

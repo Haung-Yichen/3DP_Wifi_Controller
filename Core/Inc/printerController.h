@@ -38,7 +38,8 @@ typedef enum {
 // 用於 UART3 中斷回調
 extern SemaphoreHandle_t printerRxSemaphore;
 extern volatile bool printerOkReceived;
-extern char printerRxBuf[64];
+#define PRINTER_RX_BUF_SIZE 256  // 增大緩衝區以容納多行回應
+extern char printerRxBuf[PRINTER_RX_BUF_SIZE];
 extern volatile uint16_t printerRxLen;
 
 void PC_init(void);
@@ -61,6 +62,16 @@ void PC_SetState(PC_Status_TypeDef state);
  * @brief 負責更新參數
  */
 void PC_Param_Polling(void);
+
+/**
+ * @brief 查詢印表機溫度 (在背景任務中呼叫，會阻塞)
+ */
+void PC_QueryTemperature(void);
+
+/**
+ * @brief 查詢耗材重量 (在背景任務中呼叫，會阻塞)
+ */
+void PC_QueryFilamentWeight(void);
 
 /************************************************
 *                 定義回調函數                  *

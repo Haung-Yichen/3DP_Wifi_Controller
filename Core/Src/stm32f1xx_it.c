@@ -283,17 +283,23 @@ void USART3_IRQHandler(void) {
 		HAL_UART_AbortReceive(&huart3);
 		
 		// 計算接收到的資料長度
-		printerRxLen = sizeof(printerRxBuf) - 1 - __HAL_DMA_GET_COUNTER(huart3.hdmarx);
+		printerRxLen = PRINTER_RX_BUF_SIZE - 1 - __HAL_DMA_GET_COUNTER(huart3.hdmarx);
 		printerRxBuf[printerRxLen] = '\0';
 		
-		// 檢查是否收到 "ok"
-		if (printerRxLen > 0 && strstr(printerRxBuf, "ok") != NULL) {
-			printerOkReceived = true;
-		} else {
-			printerOkReceived = false;
+		// 根據 Marlin 協議檢查回應:
+		// - "ok" 開頭或包含 "ok" 表示命令完成
+		// - " T:..." (空格開頭) 是 M109/M190 的溫度報告，不是最終回應
+		// - "echo:" 開頭是訊息，可能是多行回應的一部分
+		if (printerRxLen > 0) {
+			// 檢查是否包含 "ok" (可能是 "ok" 或 "ok T:...")
+			if (strstr(printerRxBuf, "ok") != NULL) {
+				printerOkReceived = true;
+			} else {
+				printerOkReceived = false;
+			}
 		}
 		
-		// 通知列印任務
+		// 通知列印任務 (無論是否收到 ok，都通知以便處理中間回應)
 		if (printerRxSemaphore != NULL) {
 			xSemaphoreGiveFromISR(printerRxSemaphore, &xHigherPriorityTaskWoken);
 		}

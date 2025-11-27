@@ -46,10 +46,128 @@ static uint8_t pc_RxBuf[128] = {0};  // 增大緩衝區以容納完整的溫度�
 // 用於非阻塞 UART 通訊
 SemaphoreHandle_t printerRxSemaphore = NULL;
 volatile bool printerOkReceived = false;
-char printerRxBuf[64] __attribute__((aligned(4)));
+char printerRxBuf[PRINTER_RX_BUF_SIZE] __attribute__((aligned(4)));
 volatile uint16_t printerRxLen = 0;
 
 static void PC_ParseRemainingTime(FIL *file);
+
+// 預設超時時間 (毫秒)
+#define GCODE_DEFAULT_TIMEOUT_MS     10000   // 一般命令 10 秒
+#define GCODE_BLOCKING_TIMEOUT_MS   300000   // 阻塞命令 (M109/M190/G28) 5 分鐘
+
+/**
+ * @brief 判斷 G-code 命令是否為阻塞命令
+ * @param gcode_line G-code 命令字串
+ * @return true 為阻塞命令，需要更長的超時時間
+ */
+static bool PC_IsBlockingCommand(const char *gcode_line) {
+	if (gcode_line == NULL) return false;
+	
+	// 跳過前導空白
+	const char *p = gcode_line;
+	while (*p == ' ' || *p == '\t') p++;
+	
+	// 跳過行號 (N123)
+	if (*p == 'N' || *p == 'n') {
+		while (*p && *p != ' ') p++;
+		while (*p == ' ') p++;
+	}
+	
+	// 檢查阻塞命令
+	// M109 - 等待噴頭溫度
+	// M190 - 等待熱床溫度
+	// G28  - 歸零 (可能需要 30-60 秒)
+	// M400 - 等待所有移動完成
+	if ((p[0] == 'M' || p[0] == 'm') && p[1] == '1' && p[2] == '0' && p[3] == '9') return true;
+	if ((p[0] == 'M' || p[0] == 'm') && p[1] == '1' && p[2] == '9' && p[3] == '0') return true;
+	if ((p[0] == 'G' || p[0] == 'g') && p[1] == '2' && p[2] == '8') return true;
+	if ((p[0] == 'M' || p[0] == 'm') && p[1] == '4' && p[2] == '0' && p[3] == '0') return true;
+	
+	return false;
+}
+
+/**
+ * @brief 發送 G-code 並等待印表機回應 "ok"
+ * @note  根據 Marlin 協議，必須等待 "ok" 才能發送下一個命令
+ *        對於 M109/M190 等阻塞命令，期間會持續收到溫度報告 (以空格開頭)
+ * @param gcode_line G-code 命令字串 (應包含換行符)
+ * @return true 成功收到 "ok"，false 超時或錯誤
+ */
+static bool PC_SendGcodeAndWaitOk(const char *gcode_line) {
+	if (gcode_line == NULL || strlen(gcode_line) == 0) return true;
+	
+	bool is_blocking = PC_IsBlockingCommand(gcode_line);
+	uint32_t timeout_ms = is_blocking ? GCODE_BLOCKING_TIMEOUT_MS : GCODE_DEFAULT_TIMEOUT_MS;
+	uint32_t single_wait_ms = 5000;  // 每次等待 5 秒
+	uint32_t elapsed_ms = 0;
+	
+	// 準備接收
+	HAL_UART_AbortReceive(&huart3);
+	xSemaphoreTake(printerRxSemaphore, 0);  // 清除信號量
+	memset(printerRxBuf, 0, sizeof(printerRxBuf));
+	printerRxLen = 0;
+	printerOkReceived = false;
+	HAL_UART_Receive_DMA(&huart3, (uint8_t*)printerRxBuf, sizeof(printerRxBuf) - 1);
+	__HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
+	
+	// 發送 G-code（阻塞式確保發送完成）
+	HAL_StatusTypeDef uart_status = HAL_UART_Transmit(&huart3,
+	                                                   (uint8_t*)gcode_line,
+	                                                   strlen(gcode_line),
+	                                                   1000);
+	if (uart_status != HAL_OK) {
+		printf("%-20s UART TX failed: %d\r\n", "[printerController.c]", uart_status);
+		HAL_UART_AbortReceive(&huart3);
+		return false;
+	}
+	
+	// 等待印表機回應
+	while (elapsed_ms < timeout_ms) {
+		// 檢查停止請求
+		if (stopRequested) {
+			HAL_UART_AbortReceive(&huart3);
+			return false;
+		}
+		
+		if (xSemaphoreTake(printerRxSemaphore, pdMS_TO_TICKS(single_wait_ms)) == pdTRUE) {
+			// 收到回應
+			if (printerOkReceived) {
+				// 成功收到 "ok"
+				return true;
+			} else {
+				// 收到其他回應 (可能是溫度報告或 echo 訊息)
+				// 對於阻塞命令，這是正常的，繼續等待
+				if (is_blocking) {
+					// 可以解析溫度報告來更新顯示 (可選)
+					// 例如: " T:150.25 /200.00 B:55.00 /60.00 ..."
+					
+					// 重新啟動接收，等待下一個回應
+					memset(printerRxBuf, 0, sizeof(printerRxBuf));
+					printerRxLen = 0;
+					printerOkReceived = false;
+					HAL_UART_Receive_DMA(&huart3, (uint8_t*)printerRxBuf, sizeof(printerRxBuf) - 1);
+					__HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
+				} else {
+					// 非阻塞命令收到非 "ok" 回應，可能是多行回應
+					// 繼續等待 "ok"
+					memset(printerRxBuf, 0, sizeof(printerRxBuf));
+					printerRxLen = 0;
+					printerOkReceived = false;
+					HAL_UART_Receive_DMA(&huart3, (uint8_t*)printerRxBuf, sizeof(printerRxBuf) - 1);
+					__HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
+				}
+			}
+		} else {
+			// 本次等待超時
+			elapsed_ms += single_wait_ms;
+		}
+	}
+	
+	// 總超時
+	HAL_UART_AbortReceive(&huart3);
+	printf("%-20s Timeout waiting for ok (cmd: %.20s...)\r\n", "[printerController.c]", gcode_line);
+	return false;
+}
 
 void PC_init(void) {
 	PC_RegCallback();
@@ -173,36 +291,20 @@ void PC_Print_Task(void *argument) {
 				pcParameter.remainingTime.seconds = remaining_seconds % 60;
 			}
 		}
-		// 中止之前可能正在進行的接收
-		HAL_UART_AbortReceive(&huart3);
-		xSemaphoreTake(printerRxSemaphore, 0);
-		memset(printerRxBuf, 0, sizeof(printerRxBuf));
-		printerRxLen = 0;
-		printerOkReceived = false;
-		HAL_UART_Receive_DMA(&huart3, (uint8_t*)printerRxBuf, sizeof(printerRxBuf) - 1);
-		__HAL_UART_ENABLE_IT(&huart3, UART_IT_IDLE);
-		
-		// 發送 G-code（阻塞式確保發送完成）
-		HAL_StatusTypeDef uart_status = HAL_UART_Transmit(&huart3,
-		                                                   (uint8_t*)gcode_line,
-		                                                   strlen(gcode_line),
-		                                                   1000);
-		if (uart_status != HAL_OK) {
-		    printf("%-20s UART TX failed: %d\r\n", "[printerController.c]", uart_status);
-		    HAL_UART_AbortReceive(&huart3);
-		    break;
+
+		// 跳過空行 (只有換行符的行)
+		if (gcode_line[0] == '\n' || gcode_line[0] == '\r') {
+			continue;
 		}
-		
-		// 等待印表機回應 (5 秒超時)
-		if (xSemaphoreTake(printerRxSemaphore, pdMS_TO_TICKS(5000)) == pdTRUE) {
-		    // 檢查是否收到 "ok"
-		    if (!printerOkReceived) {
-		        printf("%-20s Unexpected response: %s\r\n", "[printerController.c]", printerRxBuf);
-		    }
-		} else {
-		    // 超時，中止接收
-		    HAL_UART_AbortReceive(&huart3);
-		    printf("%-20s Timeout at line %lu\r\n", "[printerController.c]", line);
+
+		// 發送 G-code 並等待 "ok" (根據 Marlin 協議)
+		if (!PC_SendGcodeAndWaitOk(gcode_line)) {
+			if (stopRequested) {
+				printf("%-20s Stop requested, terminating.\r\n", "[printerController.c]");
+			} else {
+				printf("%-20s Failed at line %lu, continuing...\r\n", "[printerController.c]", line);
+				// 可選：繼續列印還是停止？這裡選擇繼續
+			}
 		}
 	}
 CleanRes:
@@ -232,20 +334,80 @@ void PC_SetState(PC_Status_TypeDef status) {
 	pcStatus = status;
 }
 
-void PC_Param_Polling(void) {
-	// 網頁沒有連接才需要自己輪詢
-	if (isWebConnected) {
+/**
+ * @brief 查詢印表機溫度 (在背景任務中呼叫)
+ * @note  此函數會阻塞等待印表機回應，不應在命令處理任務中呼叫
+ */
+void PC_QueryTemperature(void) {
+	// 列印期間不查詢溫度，避免干擾 G-code 發送
+	if (PC_GetState() == PC_BUSY) {
 		return;
 	}
-	// 印表機列印中才需要更新時間及進度
-	// 因為不需要回傳給esp32 故參數都給null
-	if (PC_GetState() == PC_BUSY) {
-		GetRemainingTimeHandler(NULL, NULL);
-		GetProgressHandler(NULL, NULL);
+	
+	if (printerRxSemaphore == NULL) {
+		return;
 	}
-	GetFilamentWeightHandler(NULL, NULL);
-	GetBedTempHandler(NULL, NULL);
-	GetNozzleTempHandler(NULL, NULL);
+
+	// 中止任何正在進行的接收
+	HAL_UART_AbortReceive(&PRINTING_USART_PORT);
+	
+	// 清空信號量
+	xSemaphoreTake(printerRxSemaphore, 0);
+	
+	// 準備接收緩衝區
+	memset((void*)printerRxBuf, 0, sizeof(printerRxBuf));
+	printerRxLen = 0;
+	printerOkReceived = false;
+
+	// 發送 M105 命令
+	HAL_UART_Transmit(&PRINTING_USART_PORT, (uint8_t*)"M105\r\n", 6, 100);
+
+	// 啟動 DMA 接收
+	HAL_UART_Receive_DMA(&PRINTING_USART_PORT, (uint8_t*)printerRxBuf, sizeof(printerRxBuf) - 1);
+	__HAL_UART_ENABLE_IT(&PRINTING_USART_PORT, UART_IT_IDLE);
+	
+	// 等待印表機回應 (最長等待 2 秒)
+	if (xSemaphoreTake(printerRxSemaphore, pdMS_TO_TICKS(2000)) == pdTRUE) {
+		// 解析溫度資料，格式如: "ok T:210.5 /210.0 B:60.2 /60.0"
+		char *temp_pos = strstr(printerRxBuf, "T:");
+		if (temp_pos != NULL) {
+			pcParameter.nozzleTemp = (uint8_t)atoi(temp_pos + 2);
+		}
+		char *bed_pos = strstr(printerRxBuf, "B:");
+		if (bed_pos != NULL) {
+			pcParameter.bedTemp = (uint8_t)atoi(bed_pos + 2);
+		}
+	} else {
+		HAL_UART_AbortReceive(&PRINTING_USART_PORT);
+	}
+}
+
+/**
+ * @brief 查詢耗材重量 (在背景任務中呼叫)
+ * @note  此函數會阻塞等待 HX711 讀取，不應在命令處理任務中呼叫
+ */
+void PC_QueryFilamentWeight(void) {
+	if (ESP32_GetState() == ESP32_BUSY) {
+		return;
+	}
+	float weight_g = Hx711_GetWeight(&hx711, 3);
+	pcParameter.filamentWeight = (int)weight_g;
+}
+
+void PC_Param_Polling(void) {
+	PC_QueryTemperature();
+	PC_QueryFilamentWeight();
+
+	UI_Update_NozzleTemp(pcParameter.nozzleTemp);
+	UI_Update_BedTemp_Int(pcParameter.bedTemp);
+	UI_Update_FilamentWeight(pcParameter.filamentWeight);
+	
+	if (PC_GetState() == PC_BUSY) {
+		UI_Update_RemainingTime(pcParameter.remainingTime.hours,
+		                        pcParameter.remainingTime.minutes,
+		                        pcParameter.remainingTime.seconds);
+		UI_Update_Progress(pcParameter.progress);
+	}
 }
 
 void StartToPrintHandler(const char *args, ResStruct_t *_resStruct) {
@@ -288,110 +450,43 @@ void GoHomeHandler(const char *args, ResStruct_t *_resStruct) {
 }
 
 void GetRemainingTimeHandler(const char *args, ResStruct_t *_resStruct) {
-	int total_seconds = pcParameter.remainingTime.hours * 3600 + 
-	                    pcParameter.remainingTime.minutes * 60 + 
-	                    pcParameter.remainingTime.seconds;
-
+	// 直接回傳快取值（非阻塞）
 	if (_resStruct != NULL) {
+		int total_seconds = pcParameter.remainingTime.hours * 3600 + 
+		                    pcParameter.remainingTime.minutes * 60 + 
+		                    pcParameter.remainingTime.seconds;
 		sprintf(_resStruct->resBuf, "RemainingTime:%d\n", total_seconds);
 	}
-	UI_Update_RemainingTime(pcParameter.remainingTime.hours,
-	                        pcParameter.remainingTime.minutes,
-	                        pcParameter.remainingTime.seconds);
 }
 
 void GetProgressHandler(const char *args, ResStruct_t *_resStruct) {
+	// 直接回傳快取值（非阻塞）
 	if (_resStruct != NULL) {
 		sprintf(_resStruct->resBuf, "Progress:%d\n", pcParameter.progress);
 	}
-	UI_Update_Progress(pcParameter.progress);
 }
 
 void GetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {
-	// 列印期間不查詢溫度，避免干擾 DMA 通訊
-	if (PC_GetState() == PC_BUSY) {
-		if (_resStruct != NULL) {
-			sprintf(_resStruct->resBuf, "NozzleTemp:%d\n", pcParameter.nozzleTemp);
-		}
-		UI_Update_NozzleTemp(pcParameter.nozzleTemp);
-		return;
-	}
-
-	if (printerRxSemaphore == NULL) {
-		printerRxSemaphore = xSemaphoreCreateBinary();
-		if (printerRxSemaphore == NULL) {
-			if (_resStruct != NULL) {
-				sprintf(_resStruct->resBuf, "NozzleTemp:%d\n", pcParameter.nozzleTemp);
-			}
-			UI_Update_NozzleTemp(pcParameter.nozzleTemp);
-			return;
-		}
-	}
-
-	// 中止任何正在進行的接收（清空印表機啟動信息等）
-	HAL_UART_AbortReceive(&PRINTING_USART_PORT);
-	
-	// 清空信號量 (確保沒有殘留的信號)
-	xSemaphoreTake(printerRxSemaphore, 0);
-	
-	// 準備接收緩衝區
-	memset((void*)printerRxBuf, 0, sizeof(printerRxBuf));
-	printerRxLen = 0;
-	printerOkReceived = false;
-
-	// 先發送 M105 命令 (阻塞式發送確保完成)
-	HAL_UART_Transmit(&PRINTING_USART_PORT, (uint8_t*)"M105\r\n", 6, 100);
-
-	// 啟動 DMA 接收並啟用 IDLE 中斷
-	HAL_UART_Receive_DMA(&PRINTING_USART_PORT, (uint8_t*)printerRxBuf, sizeof(printerRxBuf) - 1);
-	__HAL_UART_ENABLE_IT(&PRINTING_USART_PORT, UART_IT_IDLE);
-	
-	// 等待印表機回應 (使用信號量，最長等待 2 秒)
-	if (xSemaphoreTake(printerRxSemaphore, pdMS_TO_TICKS(2000)) == pdTRUE) {
-		// 複製到本地緩衝區進行解析（避免 DMA 緩衝區問題）
-		char localBuf[64];
-		memcpy(localBuf, (const void*)printerRxBuf, sizeof(localBuf));
-		localBuf[sizeof(localBuf) - 1] = '\0';
-		
-		// 解析印表機回傳的溫度資料，格式如: "ok T:210.5 /210.0 B:60.2 /60.0"
-		char *temp_pos = strstr(localBuf, "T:");
-		if (temp_pos != NULL) {
-			pcParameter.nozzleTemp = (uint8_t)atoi(temp_pos + 2);
-		}
-		char *bed_pos = strstr(localBuf, "B:");
-		if (bed_pos != NULL) {
-			pcParameter.bedTemp = (uint8_t)atoi(bed_pos + 2);
-		}
-	} else {
-		HAL_UART_AbortReceive(&PRINTING_USART_PORT);
-	}
-	
+	// 直接回傳快取值（非阻塞）
+	// 溫度會由 PC_QueryTemperature() 在背景定期更新
 	if (_resStruct != NULL) {
 		sprintf(_resStruct->resBuf, "NozzleTemp:%d\n", pcParameter.nozzleTemp);
 	}
-	UI_Update_NozzleTemp(pcParameter.nozzleTemp);
 }
 
 void GetBedTempHandler(const char *args, ResStruct_t *_resStruct) {
-	char bedTempStr[16];
-	snprintf(bedTempStr, sizeof(bedTempStr), "%d", pcParameter.bedTemp);
-	
+	// 直接回傳快取值（非阻塞）
 	if (_resStruct != NULL) {
 		sprintf(_resStruct->resBuf, "BedTemp:%d\n", pcParameter.bedTemp);
 	}
-	UI_Update_BedTemp(bedTempStr);
 }
 
 void GetFilamentWeightHandler(const char *args, ResStruct_t *_resStruct) {
-	if (ESP32_GetState() == ESP32_BUSY) {
-		return;
-	}
-	float weight_g = Hx711_GetWeight(&hx711, 3);
-	pcParameter.filamentWeight = (int)weight_g;
+	// 直接回傳快取的重量值（非阻塞）
+	// 重量會由 PC_QueryFilamentWeight() 在背景定期更新
 	if (_resStruct != NULL) {
 		sprintf(_resStruct->resBuf, "FilamentWeight:%d\n", pcParameter.filamentWeight);
 	}
-	UI_Update_FilamentWeight(pcParameter.filamentWeight);
 }
 
 void SetNozzleTempHandler(const char *args, ResStruct_t *_resStruct) {

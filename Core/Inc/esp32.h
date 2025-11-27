@@ -85,6 +85,4 @@ void TransmissionOverHandler(const char *args, ResStruct_t *_resStruct);
  */
 void SetFileNameHandler(const char *args, ResStruct_t *_resStruct);
 
-HAL_StatusTypeDef sendString_to_Esp32(const char *txBuf);
-
 #endif /* _ESP32_H_ */

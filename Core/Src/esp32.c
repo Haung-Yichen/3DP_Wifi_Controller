@@ -192,19 +192,5 @@ void TransmissionOverHandler(const char *args, ResStruct_t *_resStruct) {
 	printf("%-20s \r\n======================TransMission Successed=====================\r\n", "[esp32.c]");
 	UI_Show_FileUploadSuccess();
 	ESP32_SetState(ESP32_IDLE);
-	sendString_to_Esp32(ESP32_OK);
-}
-
-HAL_StatusTypeDef sendString_to_Esp32(const char *txBuf) {
-	// if (HAL_UART_GetState(&ESP32_USART_PORT) == HAL_UART_STATE_BUSY_TX) {
-	// 	return HAL_BUSY;
-	// }
-	HAL_StatusTypeDef hal_status = HAL_UART_Transmit(&ESP32_USART_PORT,
-	                                                 (uint8_t *) txBuf,
-	                                                 strlen(txBuf),
-	                                                 HAL_TIMEOUT);
-	if (hal_status != HAL_OK) {
-		printf("%-20s failed to transmit %s\r\n", "[esp32.c]", txBuf);
-	}
-	return hal_status;
+	UART_SendString_DMA(&ESP32_USART_PORT, ESP32_OK);
 }

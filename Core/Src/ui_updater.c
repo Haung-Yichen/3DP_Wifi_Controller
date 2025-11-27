@@ -61,6 +61,17 @@ void UI_Update_BedTemp(const char* temp) {
     }
 }
 
+void UI_Update_BedTemp_Int(int temp) {
+    if (hPage1 != 0) {
+        WM_HWIN hItem = WM_GetDialogItem(hPage1, ID_TEXT_BED_VALUE);
+        if (hItem != 0) {
+            char tempStr[16];
+            snprintf(tempStr, sizeof(tempStr), "%d C", temp);
+            TEXT_SetText(hItem, tempStr);
+        }
+    }
+}
+
 void UI_Update_Progress(int progress) {
     if (hPage1 != 0) {
         WM_HWIN hItem = WM_GetDialogItem(hPage1, ID_PROGBAR_0);

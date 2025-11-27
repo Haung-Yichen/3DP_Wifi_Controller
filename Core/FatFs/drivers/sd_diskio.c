@@ -168,26 +168,49 @@ DRESULT SD_write(BYTE lun, const BYTE *buff, DWORD sector, UINT count)
 {
   DRESULT res = RES_ERROR;
   uint32_t startTick;
+  uint8_t retryCount = 0;
+  const uint8_t MAX_WRITE_RETRIES = 3;
 
   // 建議將超時設定為 5000ms，SD 卡規範允許寫入最長延遲可達 500ms+
   const uint32_t WRITE_TIMEOUT_MS = 5000;
 
-  if(BSP_SD_WriteBlocks((uint32_t*)buff,
-                        (uint32_t)(sector),
-                        count, SD_DATATIMEOUT) == MSD_OK)
+  // 寫入前先確保 SD 卡就緒
+  startTick = HAL_GetTick();
+  while(BSP_SD_GetCardState() != MSD_OK)
   {
-    startTick = HAL_GetTick();
-
-    // 等待 SD 卡寫入完成
-    while(BSP_SD_GetCardState() != MSD_OK)
+    if ((HAL_GetTick() - startTick) > 1000)
     {
-      // 檢查是否超時
-      if ((HAL_GetTick() - startTick) > WRITE_TIMEOUT_MS)
+      return RES_NOTRDY;
+    }
+  }
+
+  for (retryCount = 0; retryCount < MAX_WRITE_RETRIES; retryCount++)
+  {
+    if(BSP_SD_WriteBlocks((uint32_t*)buff,
+                          (uint32_t)(sector),
+                          count, SD_DATATIMEOUT) == MSD_OK)
+    {
+      startTick = HAL_GetTick();
+
+      // 等待 SD 卡寫入完成
+      while(BSP_SD_GetCardState() != MSD_OK)
       {
-        return RES_ERROR;
+        // 檢查是否超時
+        if ((HAL_GetTick() - startTick) > WRITE_TIMEOUT_MS)
+        {
+          break; // 超時，嘗試重試
+        }
       }
-    }    
-    res = RES_OK;
+      
+      if (BSP_SD_GetCardState() == MSD_OK)
+      {
+        res = RES_OK;
+        break;
+      }
+    }
+    
+    // 重試前延遲
+    HAL_Delay(10 * (retryCount + 1));
   }
   
   return res;
